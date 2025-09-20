@@ -7,10 +7,11 @@
 from flask import Blueprint, request
 from flask_jwt_extended import jwt_required, get_jwt_identity
 from app.handlers.student_handler import (
-    student_login,
-    get_student_profile,
-    enroll_course,
-    get_enrolled_courses
+    handle_student_login,
+    handle_get_student_profile,
+    handle_enroll_course,
+    handle_get_enrolled_courses,
+    handle_get_enrolled_course_homeworks
 )
 
 bp = Blueprint('student', __name__, url_prefix='/api/student')
@@ -21,7 +22,7 @@ bp = Blueprint('student', __name__, url_prefix='/api/student')
 @bp.route('/login', methods=['POST'])
 def login():
     data = request.json
-    return student_login(data)
+    return handle_student_login(data)
 
 # 获取个人信息
 
@@ -30,7 +31,7 @@ def login():
 @jwt_required()
 def profile():
     user_info = get_jwt_identity()  # 从JWT中获取用户信息
-    return get_student_profile(user_info['id'])
+    return handle_get_student_profile(user_info['id'])
 
 # 选课
 
@@ -40,7 +41,7 @@ def profile():
 def enroll():
     user_info = get_jwt_identity()
     data = request.json
-    return enroll_course(student_id=user_info['id'], course_code=data.get('course_code'))
+    return handle_enroll_course(student_id=user_info['id'], course_code=data.get('course_code'))
 
 # 获取已选课程
 
@@ -49,10 +50,11 @@ def enroll():
 @jwt_required()
 def get_courses():
     user_info = get_jwt_identity()
-    return get_enrolled_courses(student_id=user_info['id'])
+    return handle_get_enrolled_courses(student_id=user_info['id'])
 
 
-@bp.route('/courses/<course_id>/homeworks',methods=['GET'])
+@bp.route('/courses/<course_id>/homeworks', methods=['GET'])
 @jwt_required()
-def get_course_homeworks():
-    todo!()
+def get_course_homeworks(course_id):
+    user_info = get_jwt_identity()
+    return handle_get_enrolled_course_homeworks(student_id=user_info['id'], course_id=course_id)

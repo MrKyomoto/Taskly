@@ -10,7 +10,7 @@ from flask_jwt_extended import create_access_token
 # TODO(有关作业的函数没有写API呢,得思考一下写什么)
 
 
-def student_login(data):
+def handle_student_login(data):
     # 验证请求参数
     student_no = data.get('student_no')
     password = data.get('password')
@@ -33,7 +33,7 @@ def student_login(data):
     })
 
 
-def get_student_profile(student_id):
+def handle_get_student_profile(student_id):
     student = get_student_by_id(student_id)
     if not student:
         return jsonify({"code": 404, "msg": "学生不存在"}), 404
@@ -49,7 +49,7 @@ def get_student_profile(student_id):
     })
 
 
-def enroll_course(student_id, course_code):
+def handle_enroll_course(student_id, course_code):
     if not course_code:
         return jsonify({"code": 400, "msg": "课程代码不能为空"}), 400
 
@@ -59,7 +59,7 @@ def enroll_course(student_id, course_code):
     return jsonify({"code": 400, "msg": msg}), 400
 
 
-def get_enrolled_courses(student_id):
+def handle_get_enrolled_courses(student_id):
     courses = get_student_courses(student_id)
     return jsonify({
         "code": 200,
@@ -69,8 +69,13 @@ def get_enrolled_courses(student_id):
                     "id": course.id,
                     "course_code": course.course_code,
                     "course_name": course.course_name,
-                    "semester": course.semester
+                    "semester": course.semester,
+                    "description": course.description,
+                    "status": course.status
                 } for course in courses
             ]
         }
     })
+def handle_get_enrolled_course_homeworks(student_id):
+    # TODO:
+    homeworks = 
