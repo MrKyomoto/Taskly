@@ -12,6 +12,9 @@ from handlers.student_handler import (
     handle_get_student_courses,
     handle_enroll_course,
 )
+from util import (
+    parse_identity
+)
 
 # 认证相关路由蓝图
 auth_bp = Blueprint('student_auth', __name__, url_prefix='/api/auth/students')
@@ -35,8 +38,12 @@ def login():
 @jwt_required()
 def get_student_profile():
     """获取当前登录学生的个人资料"""
-    current_user = get_jwt_identity()
-    return handle_get_student_profile(current_user['id'])
+    identity_str = get_jwt_identity()
+    student_id, error_response = parse_identity(
+        identity_str, expected_role="student")
+    if error_response:
+        return error_response
+    return handle_get_student_profile(student_id)
 
 # 学生课程相关接口
 
@@ -45,17 +52,27 @@ def get_student_profile():
 @jwt_required()
 def get_enrolled_courses():
     """获取当前学生已选课程"""
-    current_user = get_jwt_identity()
-    return handle_get_student_courses(current_user['id'])
+    identity_str = get_jwt_identity()
+    student_id, error_response = parse_identity(
+        identity_str, expected_role="student")
+    if error_response:
+        return error_response
+
+    return handle_get_student_courses(student_id)
 
 
 @student_bp.route('/me/courses', methods=['POST'])
 @jwt_required()
 def enroll_course():
     """学生选课"""
-    current_user = get_jwt_identity()
+    identity_str = get_jwt_identity()
+    student_id, error_response = parse_identity(
+        identity_str, expected_role="student")
+    if error_response:
+        return error_response
+
     data = request.get_json()
-    return handle_enroll_course(current_user['id'], data.get('course_code'))
+    return handle_enroll_course(student_id, data.get('course_code'))
 
 
 # from flask import Blueprint, request

@@ -27,7 +27,7 @@ mock_courses = {
 
 # 学生选课关系 (student_id: list of course_ids)
 mock_enrollments = {
-    1: [1]
+    1: [1, 2]
 }
 
 

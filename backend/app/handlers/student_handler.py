@@ -23,8 +23,9 @@ def handle_student_login(data):
         return jsonify({"error": "学号或密码错误"}), 401
 
     # 创建JWT令牌
+    identity_str = f"student:{student['id']}"
     access_token = create_access_token(
-        identity={"id": student["id"], "role": "student"}
+        identity=identity_str,  # student:1（字符串）
     )
 
     return jsonify({
