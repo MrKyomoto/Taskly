@@ -6,13 +6,14 @@
 """
 from flask import Blueprint, request
 from flask_jwt_extended import jwt_required, get_jwt_identity
-from handlers.student_handler import (
+from app.handlers.student_handler import (
     handle_student_login,
     handle_get_student_profile,
     handle_get_student_courses,
     handle_enroll_course,
+    handle_get_enrolled_course_homeworks,
 )
-from util import (
+from app.util import (
     parse_identity
 )
 
@@ -64,7 +65,7 @@ def get_enrolled_courses():
 @student_bp.route('/me/courses', methods=['POST'])
 @jwt_required()
 def enroll_course():
-    """学生选课"""
+    """学生选课(准确的说是加入班级)"""
     identity_str = get_jwt_identity()
     student_id, error_response = parse_identity(
         identity_str, expected_role="student")
@@ -75,6 +76,36 @@ def enroll_course():
     return handle_enroll_course(student_id, data.get('course_code'))
 
 
+@student_bp.route('me/courses/<course_id>/homeworks', methods=['GET'])
+@jwt_required()
+def get_enrolled_course_homeworks(course_id):
+    """获取某门课程的所有作业"""
+    identity_str = get_jwt_identity()
+    student_id, error_response = parse_identity(
+        identity_str, expected_role="student")
+    if error_response:
+        return error_response
+
+    return handle_get_enrolled_course_homeworks(student_id, course_id)
+
+
+@student_bp.route('me/homeworks/<homework_id>/submissions', methods=['POST'])
+@jwt_required()
+def submit_homework(homework_id):
+    identity_str = get_jwt_identity()
+    student_id, error_response = parse_identity(
+        identity_str, expected_role="student")
+    if error_response:
+        return error_response
+    data = request.get_json()
+    # TODO: 是否需要在router里先对json进行解析再传入handler : 确实需要
+
+    return handle_submit_homework(student_id, homework_id, homework)
+
+
+@student_bp.route('me/homeworks/<homework_id>/grading', methods=['GET'])
+@jwt_required()
+    def get_ 
 # from flask import Blueprint, request
 # from flask_jwt_extended import jwt_required, get_jwt_identity
 # from app.handlers.student_handler import (
