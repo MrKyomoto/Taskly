@@ -9,7 +9,6 @@ from flask_migrate import Migrate
 from app.config import Config
 from app.extensions import db, jwt
 from app.routers.student import student_bp, auth_bp
-from app.routers.upload import upload_bp
 
 
 def create_app():
@@ -30,7 +29,6 @@ def create_app():
     # 注册蓝图
     app.register_blueprint(auth_bp)
     app.register_blueprint(student_bp)
-    app.register_blueprint(upload_bp)
 
     @app.route('/uploads/<path:filename>')  # 使用path转换器支持多级目录
     def uploaded_file(filename):
