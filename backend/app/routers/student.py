@@ -102,8 +102,8 @@ def upload_homework_image(homework_id):
 
     if 'file' not in request.files:
         return jsonify({"error": "未找到文件"}), 400
-    file = request.files['file']
-    if file.filename == '':
-        return jsonify({"error": "未选择文件"}), 400
+    files = request.files.getlist('file')
+    if not files or all(file.filename == '' for file in files):
+        return jsonify({"error": "未选择有效文件"}), 400
 
-    return handle_upload_homework_image(student_id, homework_id, file)
+    return handle_upload_homework_image(student_id, homework_id, files)
