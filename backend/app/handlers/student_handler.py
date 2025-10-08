@@ -7,6 +7,9 @@ from app.services.student_service import (
     enroll_student_in_course,
     get_student_course_homeworks
 )
+from app.util.file_upload import (
+    upload_image
+)
 
 # 认证相关处理函数
 
@@ -92,3 +95,16 @@ def handle_submit_homework(student_id, homework_id, homework):
     return jsonify({
 
     })
+
+
+def handle_upload_homework_image(student_id, homework_id, file):
+    try:
+        image_url = upload_image(
+            file=file,
+            role="student",
+            user_id=student_id,
+            hw_id=homework_id
+        )
+        return jsonify({"image_url": image_url}), 201
+    except Exception as e:
+        return jsonify({"error": str(e)}), 400
