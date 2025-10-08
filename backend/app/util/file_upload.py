@@ -2,7 +2,6 @@ import os
 import uuid
 from flask import current_app, jsonify
 from app.config import ALLOWED_EXTENSIONS
-import shutil
 
 
 def get_user_upload_dir(role, user_id, hw_id):
@@ -11,12 +10,6 @@ def get_user_upload_dir(role, user_id, hw_id):
     base_dir = current_app.config['UPLOAD_FOLDER']
     storage_path = os.path.join(base_dir, str(role), str(user_id), str(hw_id))
 
-    # 如果目录已存在则先清空（确保最新提交覆盖旧文件）
-    if os.path.exists(storage_path):
-        shutil.rmtree(storage_path)
-
-    # 创建新目录
-    os.makedirs(storage_path, exist_ok=True)
     return storage_path
 
 
