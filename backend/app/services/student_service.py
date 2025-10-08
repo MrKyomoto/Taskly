@@ -75,3 +75,4 @@ def enroll_student_in_course(student_id, course_code):
 
 
 def get_student_course_homeworks(student_id, course_id):
+    return True

@@ -20,3 +20,4 @@ yarn-error.log
 Thumbs.db
 config.local.py
 .env.local
+backend/app/uploads/*
