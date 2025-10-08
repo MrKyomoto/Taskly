@@ -12,8 +12,9 @@ from app.handlers.student_handler import (
     handle_get_student_courses,
     handle_enroll_course,
     handle_get_enrolled_course_homeworks,
+    handle_submit_homework,
 )
-from app.util import (
+from app.util.parse_identity import (
     parse_identity
 )
 
@@ -100,12 +101,14 @@ def submit_homework(homework_id):
     data = request.get_json()
     # TODO: 是否需要在router里先对json进行解析再传入handler : 确实需要
 
-    return handle_submit_homework(student_id, homework_id, homework)
+    return handle_submit_homework(student_id, homework_id, data)
 
 
-@student_bp.route('me/homeworks/<homework_id>/grading', methods=['GET'])
-@jwt_required()
-    def get_ 
+# @student_bp.route('me/homeworks/<homework_id>/grading', methods=['GET'])
+# @jwt_required()
+# def get_
+#
+#
 # from flask import Blueprint, request
 # from flask_jwt_extended import jwt_required, get_jwt_identity
 # from app.handlers.student_handler import (

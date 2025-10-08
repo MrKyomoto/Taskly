@@ -1,0 +1,2 @@
+- 用于存储上传的图片，服务于 backend/app/util/image_upload
+  - 相当于一个图床

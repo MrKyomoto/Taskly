@@ -86,3 +86,9 @@ def handle_get_enrolled_course_homeworks(student_id, course_id):
 
     })
 
+
+def handle_submit_homework(student_id, homework_id, homework):
+    # TODO
+    return jsonify({
+
+    })

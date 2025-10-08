@@ -9,6 +9,13 @@ BACKEND_SERVER_IP = '128.0.0.1'
 BACKEND_SERVER_PORT = 5000
 BACKEND_DEBUG_MODE = True
 
+UPLOAD_FOLDER = os.path.join(os.path.dirname(
+    os.path.abspath(__file__)), 'uploads')
+ALLOWED_EXTENSIONS = {'png', 'jpg', 'jpeg'}
+
+if not os.path.exists(UPLOAD_FOLDER):
+    os.makedirs(UPLOAD_FOLDER)
+
 
 class Config:
     SQLALCHEMY_DATABASE_URI = os.environ.get('DATABASE_URL') or \
@@ -20,3 +27,6 @@ class Config:
     # TODO(这是啥,我不懂)
     JWT_SECRET_KEY = os.environ.get('JWT_SECRET_KEY') or 'super-secret'
     JWT_ACCESS_TOKEN_EXPIRES = 3600
+
+    UPLOAD_FOLDER = UPLOAD_FOLDER
+    MAX_CONTENT_LENGTH = 16 * 1024 * 1024
