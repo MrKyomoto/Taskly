@@ -5,8 +5,10 @@ from app.models import (
     HomeworkSubmission,
     Student,
     StudentCourseRelation,
-    Course
+    Course,
+    CourseStatus
 )
+from werkzeug.security import check_password_hash
 import json
 # 模拟数据存储
 mock_students = {
@@ -42,46 +44,140 @@ mock_enrollments = {
 
 
 def authenticate_student(student_no, password):
-    """验证学生身份"""
-    for student in mock_students.values():
-        if student["student_no"] == student_no and student["password"] == password:
-            return student
-    return None
+    """
+    验证学生身份（统一返回格式：(success, data/error_msg)）
+    :param student_no: 学号
+    :param password: 明文密码
+    :return: 成功时返回 (True, 学生信息字典)，失败时返回 (False, 错误信息)
+    """
+    try:
+        student = Student.query.filter_by(student_no=student_no).first()
+        if not student:
+            return False, "学号或密码错误"  # 不暴露"学生不存在"，防止信息泄露
+
+        if not check_password_hash(student.password, password):
+            return False, "学号或密码错误"  # 统一错误提示
+
+        # 3. 验证成功，返回学生信息（不含敏感字段）
+        student_data = {
+            "id": student.id,
+            "student_no": student.student_no,
+            "name": student.name,
+            "email": student.email,
+            "phone": student.phone
+        }
+        return True, student_data
+
+    except Exception as e:
+        db.session.rollback()
+        return False, f"身份验证失败：{str(e)}"
 
 
 def get_student(student_id):
-    """根据ID获取学生信息"""
-    return mock_students.get(student_id)
+    """
+    根据ID获取学生信息（从数据库查询）
+    :param student_id: 学生ID
+    :return: (success, data/error_msg) 成功时返回学生信息字典，失败时返回错误信息
+    """
+    try:
+        student = Student.query.get(student_id)
+        if not student:
+            return False, "学生不存在"
+
+        student_data = {
+            "id": student.id,
+            "student_no": student.student_no,
+            "name": student.name,
+            "email": student.email,
+            "phone": student.phone,
+            "create_time": student.create_time.isoformat() if student.create_time else None
+        }
+
+        return True, student_data
+
+    except Exception as e:
+        db.session.rollback()
+        return False, f"获取学生信息失败：{str(e)}"
 
 
 def get_student_courses(student_id):
-    """获取学生已选课程"""
-    if student_id not in mock_enrollments:
-        return []
+    """
+    获取学生已选课程列表（从数据库查询）
+    :param student_id: 学生ID
+    :return: (success, data/error_msg) 成功时返回课程列表，失败时返回错误信息
+    """
+    try:
+        student = Student.query.get(student_id)
+        if not student:
+            return False, "学生不存在"
 
-    course_ids = mock_enrollments[student_id]
-    return [mock_courses[id] for id in course_ids if id in mock_courses]
+        # NOTE: 通过 StudentCourseRelation 关联查询该学生已选择的所有课程,同时获取选课的时间
+        enrolled_courses = db.session.query(
+            Course, StudentCourseRelation.enroll_time
+        ).join(
+            StudentCourseRelation,
+            Course.id == StudentCourseRelation.course_id
+        ).filter(
+            StudentCourseRelation.student_id == student_id
+        ).all()
+
+        course_list = []
+        for course, enroll_time in enrolled_courses:
+            course_list.append({
+                "id": course.id,
+                "course_code": course.course_code,
+                "course_name": course.course_name,
+                "description": course.description,
+                "semester": course.semester,
+                "status": course.status.value if course.status else None,
+                "enroll_time": enroll_time.isoformat() if enroll_time else None
+            })
+
+        return True, course_list
+    except Exception as e:
+        db.session.rollback()
+        return False, f"获取课程失败:{str(e)}"
 
 
-def enroll_student_in_course(student_id, course_code):
-    """学生选课"""
-    # 查找课程
-    course = next((c for c in mock_courses.values()
-                  if c["code"] == course_code), None)
-    if not course:
-        return False, "课程不存在"
+def enroll_course(student_id, course_code):
+    """
+    学生选课功能（基于数据库操作）
+    :param student_id: 学生ID
+    :param course_code: 课程代码（如"CS101"）
+    :return: (success, message) 成功时返回True和成功消息，失败时返回False和错误信息
+    """
+    try:
+        student = Student.query.get(student_id)
+        if not student:
+            return False, "学生不存在"
 
-    # 初始化学生选课列表（如果不存在）
-    if student_id not in mock_enrollments:
-        mock_enrollments[student_id] = []
+        course = Course.query.filter_by(course_code=course_code).first()
+        if not course:
+            return False, "课程不存在"
 
-    # 检查是否已选该课程
-    if course["id"] in mock_enrollments[student_id]:
-        return False, "已选该课程"
+        if course.status != CourseStatus.approved:
+            return False, f"课程状态为{course.status.value}，无法选课"
 
-    # 执行选课
-    mock_enrollments[student_id].append(course["id"])
-    return True, "选课成功"
+        existing_relation = StudentCourseRelation.query.filter_by(
+            student_id=student_id,
+            course_id=course.id
+        ).first()
+        if existing_relation:
+            return False, "已选修该课程，无需重复选课"
+
+        new_enrollment = StudentCourseRelation(
+            student_id=student_id,
+            course_id=course.id,
+            enroll_time=datetime.utcnow()
+        )
+        db.session.add(new_enrollment)
+        db.session.commit()
+
+        return True, f"成功选修课程: {course.course_name}"
+
+    except Exception as e:
+        db.session.rollback()
+        return False, f"选课失败：{str(e)}"
 
 
 def get_student_course_homeworks(student_id, course_id):

@@ -6,7 +6,7 @@ from app.services.student_service import (
     authenticate_student,
     get_student,
     get_student_courses,
-    enroll_student_in_course,
+    enroll_course,
     get_student_course_homeworks,
     submit_homework,
 )
@@ -26,12 +26,12 @@ def handle_student_login(data):
     if not student_no or not password:
         return jsonify({"error": "学号和密码不能为空"}), 400
 
-    student = authenticate_student(student_no, password)
-    if not student:
-        return jsonify({"error": "学号或密码错误"}), 401
+    success, result = authenticate_student(student_no, password)
+    if not success:
+        return jsonify({"error": result}), 401
 
     # 创建JWT令牌
-    identity_str = f"student:{student['id']}"
+    identity_str = f"student:{result['id']}"
     access_token = create_access_token(
         identity=identity_str,  # student:1（字符串）
     )
@@ -39,9 +39,11 @@ def handle_student_login(data):
     return jsonify({
         "access_token": access_token,
         "student": {
-            "id": student["id"],
-            "name": student["name"],
-            "student_no": student["student_no"]
+            "id": result["id"],
+            "student_no": result["student_no"],
+            "name": result["name"],
+            "email": result["email"],
+            "phone": result["phone"],
         }
     }), 200
 
@@ -50,29 +52,28 @@ def handle_student_login(data):
 
 def handle_get_student_profile(student_id):
     """获取学生个人资料"""
-    student = get_student(student_id)
-    if not student:
-        return jsonify({"error": "学生不存在"}), 404
-
-    # 返回不包含敏感信息的学生资料
-    return jsonify({
-        "id": student["id"],
-        "student_no": student["student_no"],
-        "name": student["name"],
-        "email": student["email"],
-        "phone": student["phone"]
-    }), 200
-
-# 课程相关处理函数
+    success, data = get_student(student_id)
+    if success:
+        return jsonify({
+            "id": data["id"],
+            "student_no": data["student_no"],
+            "name": data["name"],
+            "email": data["email"],
+            "phone": data["phone"],
+        }), 200
+    return jsonify({"error": data}), 404
 
 
+# NOTE: 课程相关处理函数
 def handle_get_student_courses(student_id):
     """获取学生已选课程"""
-    courses = get_student_courses(student_id)
-    return jsonify({
-        "courses": courses,
-        "count": len(courses)
-    }), 200
+    success, data = get_student_courses(student_id)
+    if success:
+        return jsonify({
+            "course_list": data,
+            "count": len(data)
+        }), 200
+    return jsonify({"error": data}), 400
 
 
 def handle_enroll_course(student_id, course_code):
@@ -80,7 +81,7 @@ def handle_enroll_course(student_id, course_code):
     if not course_code:
         return jsonify({"error": "课程代码不能为空"}), 400
 
-    success, message = enroll_student_in_course(student_id, course_code)
+    success, message = enroll_course(student_id, course_code)
     if success:
         return jsonify({"message": message}), 201
     return jsonify({"error": message}), 400
