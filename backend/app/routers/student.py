@@ -107,3 +107,13 @@ def upload_homework_image(homework_id):
         return jsonify({"error": "未选择有效文件"}), 400
 
     return handle_upload_homework_image(student_id, homework_id, files)
+
+@student_bp.route('me/homeworks/<homework_id>/submission', methods=['POST'])
+@jwt_required()
+def submit_homework(homework_id):
+    identity_str = get_jwt_identity()
+    student_id, error_response = parse_identity(
+        identity_str, expected_role="student")
+    if error_response:
+        return error_response
+
