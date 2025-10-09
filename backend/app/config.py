@@ -24,7 +24,6 @@ class Config:
     SQLALCHEMY_TRACK_MODIFICATIONS = True
     # 手动保存数据库提交的改动
     SQLALCHEMY_COMMIT_ON_TEARDOWN = False
-    # TODO(这是啥,我不懂)
     JWT_SECRET_KEY = os.environ.get('JWT_SECRET_KEY') or 'super-secret'
     JWT_ACCESS_TOKEN_EXPIRES = 3600
 

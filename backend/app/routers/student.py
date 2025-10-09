@@ -108,6 +108,7 @@ def upload_homework_image(homework_id):
 
     return handle_upload_homework_image(student_id, homework_id, files)
 
+
 @student_bp.route('me/homeworks/<homework_id>/submission', methods=['POST'])
 @jwt_required()
 def submit_homework(homework_id):
@@ -116,4 +117,8 @@ def submit_homework(homework_id):
         identity_str, expected_role="student")
     if error_response:
         return error_response
+    homework_data = request.get_json()
+    if not homework_data:
+        return jsonify({"error": "提交数据不能为空"}), 400
 
+    return handle_submit_homework(student_id=student_id, homework_id=homework_id, homework_data=homework_data)

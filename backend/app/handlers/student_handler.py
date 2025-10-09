@@ -7,7 +7,8 @@ from app.services.student_service import (
     get_student,
     get_student_courses,
     enroll_student_in_course,
-    get_student_course_homeworks
+    get_student_course_homeworks,
+    submit_homework,
 )
 from app.util.file_upload import (
     upload_image,
@@ -87,17 +88,32 @@ def handle_enroll_course(student_id, course_code):
 
 def handle_get_enrolled_course_homeworks(student_id, course_id):
     """获取学生已选课程的作业"""
-    homeworks = get_student_course_homeworks(student_id, course_id)
-    return jsonify({
+    success, data = get_student_course_homeworks(
+        student_id, course_id)
+    if success:
+        return jsonify({
+            "homework_list": data,
+            "count": len(data)
+        }), 200
+    return jsonify({"error": data}), 400
 
-    })
 
+def handle_submit_homework(student_id, homework_id, homework_data):
+    text_content = homework_data.get('text_content', '')
+    image_urls = homework_data.get('image_urls', [])
 
-def handle_submit_homework(student_id, homework_id, homework):
-    # TODO
-    return jsonify({
+    if not text_content and not image_urls:
+        return jsonify({"error": "提交内容不能为空（至少需要文本或图片）"}), 400
 
-    })
+    success, message = submit_homework(
+        student_id=student_id,
+        homework_id=homework_id,
+        text_content=text_content,
+        image_urls=image_urls
+    )
+    if success:
+        return jsonify({"message": message}), 201
+    return jsonify({"error": message}), 400
 
 
 def handle_upload_homework_image(student_id, homework_id, files):
