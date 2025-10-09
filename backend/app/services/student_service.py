@@ -152,6 +152,79 @@ def get_student(student_id):
         return False, f"获取学生信息失败：{str(e)}"
 
 
+def update_student_profile(student_id, update_data):
+    """
+    更新学生个人资料
+    :param student_id: 学生ID
+    :param update_data: 待更新的字段字典（支持name/email/phone）
+    :return: (success, data/error_msg) 成功返回更新后的信息，失败返回错误信息
+    """
+    # 允许修改的字段（限制范围，防止恶意更新）
+    allowed_fields = ["name", "email", "phone"]
+    # 过滤无效字段
+    valid_data = {k: v for k, v in update_data.items() if k in allowed_fields}
+
+    if not valid_data:
+        return False, "没有可更新的有效字段（支持：姓名/邮箱/电话）"
+
+    try:
+        # 查询学生是否存在
+        student = Student.query.get(student_id)
+        if not student:
+            return False, "学生不存在"
+
+        # 更新字段
+        for field, value in valid_data.items():
+            setattr(student, field, value)  # 动态设置属性
+
+        db.session.commit()
+
+        # 返回更新后的非敏感信息
+        return True, {
+            "id": student.id,
+            "student_no": student.student_no,  # 学号不允许修改，仍返回当前值
+            "name": student.name,
+            "email": student.email,
+            "phone": student.phone
+        }
+
+    except Exception as e:
+        db.session.rollback()
+        return False, f"更新资料失败：{str(e)}"
+
+
+def update_student_password(student_id, old_password, new_password):
+    """
+    修改学生密码
+    :param student_id: 学生ID
+    :param old_password: 原密码（明文）
+    :param new_password: 新密码（明文）
+    :return: (success, error_msg) 成功返回(True, "")，失败返回(False, 错误信息)
+    """
+    # 密码强度校验
+    if len(new_password) < 8:
+        return False, "新密码长度不能少于8位"
+    if old_password == new_password:
+        return False, "新密码不能与原密码相同"
+
+    try:
+        student = Student.query.get(student_id)
+        if not student:
+            return False, "学生不存在"
+
+        # 验证原密码（注意：实际项目中数据库存储的是哈希值）
+        if not check_password_hash(student.password, old_password):
+            return False, "原密码验证失败"
+
+        student.password = generate_password_hash(new_password)
+        db.session.commit()
+        return True, ""
+
+    except Exception as e:
+        db.session.rollback()
+        return False, f"密码更新失败：{str(e)}"
+
+
 def get_student_courses(student_id):
     """
     获取学生已选课程列表（从数据库查询）

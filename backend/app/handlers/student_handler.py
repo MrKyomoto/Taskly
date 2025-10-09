@@ -10,6 +10,8 @@ from app.services.student_service import (
     enroll_course,
     get_student_course_homeworks,
     submit_homework,
+    update_student_profile,
+    update_student_password,
 )
 from app.util.file_upload import (
     upload_image,
@@ -82,7 +84,41 @@ def handle_get_student_profile(student_id):
     return jsonify({"error": data}), 404
 
 
+def handle_update_student_profile(student_id, update_data):
+    """处理学生修改个人资料请求"""
+    success, result = update_student_profile(student_id, update_data)
+    if success:
+        return jsonify({
+            "message": "资料更新成功",
+            "student": result
+        }), 200
+    # 区分"学生不存在"和其他错误（404 vs 400）
+    if result == "学生不存在":
+        return jsonify({"error": result}), 404
+    return jsonify({"error": result}), 400
+
+
+def handle_update_student_password(student_id, password_data):
+    """处理学生修改密码请求"""
+    old_password = password_data.get("old_password")
+    new_password = password_data.get("new_password")
+
+    # 基础参数校验
+    if not old_password or not new_password:
+        return jsonify({"error": "原密码和新密码不能为空"}), 400
+
+    # 调用服务层逻辑
+    success, error_msg = update_student_password(
+        student_id, old_password, new_password
+    )
+
+    if success:
+        return jsonify({"message": "密码修改成功，请重新登录"}), 200
+    return jsonify({"error": error_msg}), 400
+
 # NOTE: 课程相关处理函数
+
+
 def handle_get_student_courses(student_id):
     """获取学生已选课程"""
     success, data = get_student_courses(student_id)

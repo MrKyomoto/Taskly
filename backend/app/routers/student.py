@@ -14,7 +14,9 @@ from app.handlers.student_handler import (
     handle_enroll_course,
     handle_get_enrolled_course_homeworks,
     handle_submit_homework,
-    handle_upload_homework_image
+    handle_upload_homework_image,
+    handle_update_student_profile,
+    handle_update_student_password,
 )
 from app.util.parse_identity import (
     parse_identity
@@ -60,6 +62,40 @@ def get_student_profile():
         return error_response
     return handle_get_student_profile(student_id)
 
+
+@student_bp.route('/me', methods=['PATCH'])
+@jwt_required()
+def update_student_profile_route():
+    """修改当前登录学生的个人资料"""
+    identity_str = get_jwt_identity()
+    student_id, error_response = parse_identity(
+        identity_str, expected_role="student")
+    if error_response:
+        return error_response
+
+    update_data = request.get_json()
+    if not update_data:
+        return jsonify({"error": "请求数据不能为空"}), 400
+
+    return handle_update_student_profile(student_id, update_data)
+
+
+@student_bp.route('/me/password', methods=['PATCH'])
+@jwt_required()
+def update_password():
+    """修改当前登录学生的密码"""
+    identity_str = get_jwt_identity()
+    student_id, error_response = parse_identity(
+        identity_str, expected_role="student"
+    )
+    if error_response:
+        return error_response
+
+    password_data = request.get_json()
+    if not password_data:
+        return jsonify({"error": "请求数据不能为空"}), 400
+
+    return handle_update_student_password(student_id, password_data)
 # 学生课程相关接口
 
 
