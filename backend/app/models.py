@@ -31,7 +31,7 @@ class Student(db.Model):
     student_no = db.Column(db.String(30), unique=True,
                            nullable=False, index=True)
     name = db.Column(db.String(50), nullable=False)
-    password = db.Column(db.String(100), nullable=False)  # 存储哈希值
+    password = db.Column(db.String(255), nullable=False)  # 存储哈希值
     phone = db.Column(db.String(20))
     email = db.Column(db.String(100))
     create_time = db.Column(db.DateTime, default=datetime.utcnow)
@@ -49,7 +49,7 @@ class Staff(db.Model):
                          nullable=False, index=True)
     name = db.Column(db.String(50), nullable=False)
     role = db.Column(db.Enum(StaffRole), nullable=False)
-    password = db.Column(db.String(100), nullable=False)  # 存储哈希值
+    password = db.Column(db.String(255), nullable=False)  # 存储哈希值
     phone = db.Column(db.String(20))
     email = db.Column(db.String(100))
     create_time = db.Column(db.DateTime, default=datetime.utcnow)
@@ -66,7 +66,7 @@ class Admin(db.Model):
     username = db.Column(db.String(50), unique=True,
                          nullable=False, index=True)
     name = db.Column(db.String(50), nullable=False)
-    password = db.Column(db.String(100), nullable=False)  # 存储哈希值
+    password = db.Column(db.String(255), nullable=False)  # 存储哈希值
     phone = db.Column(db.String(20))
     create_time = db.Column(db.DateTime, default=datetime.utcnow)
 

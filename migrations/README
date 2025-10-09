@@ -1,1 +1,11 @@
 Single-database configuration for Flask.
+- every time when the database data structure has changed, you should:
+```bash
+# in your proj root(in this case is Taskly/)
+set FLASK_APP=backend/run.py
+
+# same as git commit
+flask db migrate -m "some message"
+
+flask db upgrade
+```
