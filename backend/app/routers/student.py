@@ -8,6 +8,7 @@ from flask import Blueprint, request, jsonify
 from flask_jwt_extended import jwt_required, get_jwt_identity
 from app.handlers.student_handler import (
     handle_student_login,
+    handle_student_register,
     handle_get_student_profile,
     handle_get_student_courses,
     handle_enroll_course,
@@ -32,7 +33,18 @@ student_bp = Blueprint('students', __name__, url_prefix='/api/students')
 def login():
     """学生登录接口"""
     data = request.get_json()
+    if not data:
+        return jsonify({"error": "请求数据不能为空"}), 400
     return handle_student_login(data)
+
+
+@auth_bp.route('/register', methods=['POST'])
+def register():
+    """学生注册接口"""
+    data = request.get_json()
+    if not data:
+        return jsonify({"error": "请求数据不能为空"}), 400
+    return handle_student_register(data)
 
 # 学生个人信息接口
 

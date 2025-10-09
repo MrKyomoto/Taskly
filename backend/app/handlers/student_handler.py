@@ -4,6 +4,7 @@ from flask import jsonify
 from flask_jwt_extended import create_access_token
 from app.services.student_service import (
     authenticate_student,
+    register_student,
     get_student,
     get_student_courses,
     enroll_course,
@@ -46,6 +47,23 @@ def handle_student_login(data):
             "phone": result["phone"],
         }
     }), 200
+
+
+def handle_student_register(data):
+    """处理学生注册请求"""
+    success, result = register_student(data)
+    if success:
+        return jsonify({
+            "message": "注册成功",
+            "student": {
+                "id": result["id"],
+                "student_no": result["student_no"],
+                "name": result["name"],
+                "email": result["email"],
+                "phone": result["phone"],
+            }
+        }), 201
+    return jsonify({"error": result}), 400
 
 # 学生信息相关处理函数
 

@@ -8,7 +8,10 @@ from app.models import (
     Course,
     CourseStatus
 )
-from werkzeug.security import check_password_hash
+from werkzeug.security import (
+    check_password_hash,
+    generate_password_hash,
+)
 import json
 # 模拟数据存储
 mock_students = {
@@ -71,6 +74,55 @@ def authenticate_student(student_no, password):
     except Exception as e:
         db.session.rollback()
         return False, f"身份验证失败：{str(e)}"
+
+
+def register_student(student_data):
+    """
+    学生注册服务
+    :param student_data: 包含注册信息的字典（student_no, name, password, email, phone）
+    :return: (success, data/error_msg) 成功返回学生信息，失败返回错误信息
+    """
+    required_fields = ["student_no", "name", "password"]
+    # 校验必填字段
+    for field in required_fields:
+        if not student_data.get(field):
+            return False, f"缺少必填字段：{field}"
+
+    student_no = student_data["student_no"]
+    name = student_data["name"]
+    password = student_data["password"]
+    email = student_data.get("email", "")
+    phone = student_data.get("phone", "")
+
+    try:
+        existing_student = Student.query.filter_by(
+            student_no=student_no).first()
+        if existing_student:
+            return False, "该学号已注册"
+
+        hashed_password = generate_password_hash(password)
+
+        new_student = Student(
+            student_no=student_no,
+            name=name,
+            password=hashed_password,
+            email=email,
+            phone=phone
+        )
+        db.session.add(new_student)
+        db.session.commit()
+
+        return True, {
+            "id": new_student.id,
+            "student_no": new_student.student_no,
+            "name": new_student.name,
+            "email": new_student.email,
+            "phone": new_student.phone
+        }
+
+    except Exception as e:
+        db.session.rollback()
+        return False, f"注册失败：{str(e)}"
 
 
 def get_student(student_id):
