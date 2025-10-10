@@ -12,6 +12,7 @@ from app.services.student_service import (
     submit_homework,
     update_student_profile,
     update_student_password,
+    get_student_homework_submission,
 )
 from app.util.file_upload import (
     upload_image,
@@ -151,6 +152,24 @@ def handle_get_enrolled_course_homeworks(student_id, course_id):
             "count": len(data)
         }), 200
     return jsonify({"error": data}), 400
+
+
+def handle_get_student_submission(student_id, course_id, homework_id):
+    """处理获取学生作业提交内容的请求"""
+    success, result = get_student_homework_submission(
+        student_id, course_id, homework_id
+    )
+    if success:
+        return jsonify({
+            "message": "获取提交内容成功",
+            "submission": result
+        }), 200
+    # 区分不同错误类型的状态码
+    if result in ["未选修该课程，无权限查看", "该课程下无此作业"]:
+        return jsonify({"error": result}), 403
+    if result == "未提交该作业":
+        return jsonify({"error": result}), 404
+    return jsonify({"error": result}), 500
 
 
 def handle_submit_homework(student_id, homework_id, homework_data):
