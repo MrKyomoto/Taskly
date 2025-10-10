@@ -356,6 +356,64 @@ def get_student_course_homeworks(student_id, course_id):
         return False, f"获取作业失败:{str(e)}"
 
 
+def get_student_homework_submission(student_id, course_id, homework_id):
+    """
+    获取学生在某课程中某作业的提交内容
+    :param student_id: 学生ID
+    :param course_id: 课程ID（用于权限校验）
+    :param homework_id: 作业ID
+    :return: (success, data/error_msg) 成功返回提交内容，失败返回错误信息
+    """
+    try:
+        is_enrolled = StudentCourseRelation.query.filter_by(
+            student_id=student_id,
+            course_id=course_id
+        ).first()
+        if not is_enrolled:
+            return False, "未选修该课程，无权限查看"
+
+        # 2. 校验作业是否属于该课程
+        homework = Homework.query.filter_by(
+            id=homework_id,
+            course_id=course_id
+        ).first()
+        if not homework:
+            return False, "该课程下无此作业"
+
+        # 3. 查询学生的提交记录
+        submission = HomeworkSubmission.query.filter_by(
+            student_id=student_id,
+            homework_id=homework_id
+        ).first()
+
+        if not submission:
+            return False, "未提交该作业"
+
+        # 4. 处理图片URL（将相对路径转为可访问URL）
+        image_urls = []
+        if submission.image_urls:
+            import json
+            # 数据库存储的是JSON字符串，需解析
+            relative_paths = json.loads(submission.image_urls)
+            for path in relative_paths:
+                image_urls.append({
+                    "image_url": path
+                })
+
+        # 5. 构造返回数据
+        return True, {
+            "id": submission.id,
+            "homework_id": submission.homework_id,
+            "text_content": submission.text_content,
+            "image_urls": image_urls,
+            "submit_time": submission.submit_time.strftime("%Y-%m-%d %H:%M:%S"),
+            "is_graded": submission.is_graded
+        }
+
+    except Exception as e:
+        return False, f"获取提交内容失败：{str(e)}"
+
+
 def submit_homework(student_id, homework_id, text_content, image_urls):
     """
     提交学生作业

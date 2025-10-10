@@ -17,6 +17,7 @@ from app.handlers.student_handler import (
     handle_upload_homework_image,
     handle_update_student_profile,
     handle_update_student_password,
+    handle_get_student_submission,
 )
 from app.util.parse_identity import (
     parse_identity
@@ -137,6 +138,28 @@ def get_enrolled_course_homeworks(course_id):
         return error_response
 
     return handle_get_enrolled_course_homeworks(student_id, course_id)
+
+
+@student_bp.route('/me/courses/<course_id>/homeworks/<homework_id>/submission', methods=['GET'])
+@jwt_required()
+def get_homework_submission(course_id, homework_id):
+    """查看当前学生在某课程中某作业的提交内容"""
+    # 解析身份信息
+    identity_str = get_jwt_identity()
+    student_id, error_response = parse_identity(
+        identity_str, expected_role="student"
+    )
+    if error_response:
+        return error_response
+
+    # 参数校验（确保ID为数字）
+    try:
+        course_id = int(course_id)
+        homework_id = int(homework_id)
+    except ValueError:
+        return jsonify({"error": "课程ID和作业ID必须为数字"}), 400
+
+    return handle_get_student_submission(student_id, course_id, homework_id)
 
 
 @student_bp.route('me/homeworks/<homework_id>/upload-image', methods=['POST'])
