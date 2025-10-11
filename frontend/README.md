@@ -1,7 +1,7 @@
 # Frontend
 vue3+Element
 
-
+```
 frontend/
 ├── public/                 # 静态资源，不会被 Vite 处理
 │   └── index.html          # HTML 入口文件
@@ -33,3 +33,4 @@ frontend/
 ├── package.json            # 项目依赖和脚本配置
 ├── vite.config.js          # Vite 配置文件 (可配置代理实现跨域)
 └── README.md               # 前端项目说明
+```
