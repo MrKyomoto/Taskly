@@ -122,9 +122,14 @@ class StaffCourseRelation(db.Model):
 class Homework(db.Model):
     id = db.Column(db.Integer, primary_key=True)
     course_id = db.Column(db.Integer, db.ForeignKey(
-        'course.id', ondelete='CASCADE'), nullable=False)
+        'course.id', ondelete='CASCADE'), nullable=False, index=True)
     publisher_id = db.Column(
         db.Integer, db.ForeignKey('staff.id'), nullable=False)
+    course_hw_no = db.Column(
+        db.Integer,
+        nullable=False,
+        comment="同一课程内的作业序号"
+    )
     title = db.Column(db.String(255), nullable=False)
     content = db.Column(db.Text)  # 文本内容
     image_urls = db.Column(db.Text)  # JSON格式存储图片URL
@@ -135,6 +140,14 @@ class Homework(db.Model):
     # 关联：作业-提交记录（一对多）
     submissions = db.relationship(
         'HomeworkSubmission', backref='homework', cascade='all, delete-orphan')
+
+    # 添加新的约束: 同一课程内的course_hw_no必须唯一
+    __table_args__ = (
+        db.UniqueConstraint(
+            'course_id', 'course_hw_no',
+            name='unique_course_hw_no'  # 约束名,方便迁移和调试
+        ),
+    )
 
 # 作业提交表
 
