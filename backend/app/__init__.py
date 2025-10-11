@@ -6,7 +6,7 @@
 """
 from flask import Flask, send_from_directory, jsonify
 from flask_migrate import Migrate
-from app.config import Config, init_app as configure_app
+from app.config import Config
 from app.extensions import db, jwt
 from app.routers.student import student_bp, auth_bp
 from flask_jwt_extended import jwt_required, get_jwt_identity
@@ -28,17 +28,6 @@ def create_app():
             StaffRole, CourseStatus, HomeworkType  # 枚举类可选，不导入也不影响建表
         )
 
-        # 自动调整 student.password 列为更大的类型，避免哈希过长导致插入失败
-        # 使用 TRY/CATCH，以免在不存在表或权限不足时阻塞应用启动
-        from sqlalchemy import text
-        try:
-            db.session.execute(text("ALTER TABLE student MODIFY COLUMN password TEXT;"))
-            db.session.commit()
-            app.logger.info("Ensured student.password column is TEXT")
-        except Exception as e:
-            app.logger.info(f"Skipping ALTER TABLE student.password: {e}")
-
-    # 注册蓝图
     app.register_blueprint(auth_bp)
     app.register_blueprint(student_bp)
 
@@ -71,7 +60,5 @@ def create_app():
             return jsonify({"error": "无权访问"}), 403
 
         return send_from_directory(app.config['UPLOAD_FOLDER'], filename)
-
-    configure_app(app)
 
     return app

@@ -8,8 +8,4 @@ app = create_app()
 #     db.create_all()
 
 if __name__ == '__main__':
-    app.run(
-        host=BACKEND_SERVER_IP,
-        port=BACKEND_SERVER_PORT,
-        debug=BACKEND_DEBUG_MODE,
-    )  # 生产环境需关闭debug
+    app.run(debug=BACKEND_DEBUG_MODE)
