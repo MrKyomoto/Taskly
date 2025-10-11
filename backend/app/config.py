@@ -19,7 +19,7 @@ if not os.path.exists(UPLOAD_FOLDER):
 
 class Config:
     SQLALCHEMY_DATABASE_URI = os.environ.get('DATABASE_URL') or \
-        'mysql+pymysql://root:20041103zhn@localhost//university_homework_system'
+        'mysql+pymysql://root:rootroot@127.0.0.1:3306/university_homework_system'
     # 自动更新追踪数据库
     SQLALCHEMY_TRACK_MODIFICATIONS = True
     # 手动保存数据库提交的改动
