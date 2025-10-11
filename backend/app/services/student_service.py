@@ -331,6 +331,7 @@ def get_student_course_homeworks(student_id, course_id):
         homeworks = Homework.query.filter_by(
             course_id=course_id
         ).order_by(
+            Homework.course_hw_no.asc(),
             Homework.deadline.asc()
         ).all()
 
@@ -340,6 +341,7 @@ def get_student_course_homeworks(student_id, course_id):
 
             homework_list.append({
                 "id": hw.id,
+                "course_hw_no": hw.course_hw_no,
                 "title": hw.title,
                 "content": hw.content,
                 "image_urls": hw.image_urls,  # NOTE: frontend should parse the json str into array

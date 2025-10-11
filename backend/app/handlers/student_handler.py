@@ -16,8 +16,9 @@ from app.services.student_service import (
 )
 from app.util.file_upload import (
     upload_image,
-    get_user_upload_dir
+    get_upload_dir
 )
+from app.models import Homework, StudentCourseRelation
 
 # 认证相关处理函数
 
@@ -194,43 +195,63 @@ def handle_upload_homework_image(student_id, homework_id, files):
     success_urls = []
     error_messages = []
 
-    storage_path = get_user_upload_dir(
-        role="student", user_id=student_id, hw_id=homework_id)
-    # 如果目录已存在则先清空（确保最新提交覆盖旧文件）
-    if os.path.exists(storage_path):
-        shutil.rmtree(storage_path)
+    try:
+        homework = Homework.query.get(homework_id)
+        if not homework:
+            return jsonify({"error": f"作业ID {homework_id} 不存在"}), 404
+        course_id = homework.course_id
 
-    # 创建新目录
-    os.makedirs(storage_path, exist_ok=True)
+        is_enrolled = StudentCourseRelation.query.filter_by(
+            student_id=student_id,
+            course_id=course_id
+        ).first()
+        if not is_enrolled:
+            return jsonify({"error": "未选修该课程,无法提交作业"}), 403
 
-    for file in files:
-        if file.filename == '':
-            error_messages.append("存在空文件名的文件")
-            continue
+        storage_path = get_upload_dir(
+            course_id=course_id,
+            course_hw_no=homework.course_hw_no,
+            resource_type="submit",
+            student_id=student_id
+        )
+        # 如果目录已存在则先清空（确保最新提交覆盖旧文件）
+        if os.path.exists(storage_path):
+            shutil.rmtree(storage_path)
 
-        try:
-            # 调用单文件上传工具（假设 upload_image 已适配作业图片路径）
-            image_url = upload_image(
-                file=file,
-                role="student",
-                user_id=student_id,
-                hw_id=homework_id  # 用于区分作业图片的存储路径
-            )
-            success_urls.append(image_url)
-        except Exception as e:
-            error_messages.append(f"文件 {file.filename} 上传失败: {str(e)}")
+        # 创建新目录
+        os.makedirs(storage_path, exist_ok=True)
+
+        for file in files:
+            if file.filename == '':
+                error_messages.append("存在空文件名的文件")
+                continue
+
+            try:
+                # 调用单文件上传工具（假设 upload_image 已适配作业图片路径）
+                image_url = upload_image(
+                    file=file,
+                    course_id=course_id,
+                    course_hw_no=homework.course_hw_no,
+                    resource_type="submit",
+                    student_id=student_id
+                )
+                success_urls.append(image_url)
+            except Exception as e:
+                error_messages.append(f"文件 {file.filename} 上传失败: {str(e)}")
 
     # 构建响应
-    if not success_urls:
-        # 全部失败
-        return jsonify({
-            "error": "所有文件上传失败",
-            "details": error_messages
-        }), 400
-    else:
-        # 部分或全部成功
-        return jsonify({
-            "success_count": len(success_urls),
-            "image_urls": success_urls,
-            "errors": error_messages  # 记录失败的文件信息
-        }), 201
+        if not success_urls:
+            # 全部失败
+            return jsonify({
+                "error": "所有文件上传失败",
+                "details": error_messages
+            }), 400
+        else:
+            # 部分或全部成功
+            return jsonify({
+                "success_count": len(success_urls),
+                "image_urls": success_urls,
+                "errors": error_messages  # 记录失败的文件信息
+            }), 201
+    except Exception as e:
+        return jsonify({"error": f"上传处理失败:{str(e)}"}), 500
