@@ -1,7 +1,7 @@
 import { createRouter, createWebHistory } from 'vue-router';
 import { useUserStore } from '@/store/user';
 import Login from '@/views/Login.vue';
-import Dashboard from '@/views/Dashboard.vue';
+import StudentHome from '@/views/StudentHome.vue';
 import CourseDetail from '@/views/CourseDetail.vue';
 import HomeworkView from '@/views/HomeworkView.vue';
 
@@ -14,8 +14,8 @@ const routes = [
   },
   {
     path: '/',
-    name: 'Dashboard',
-    component: Dashboard,
+    name: 'StudentHome',
+    component: StudentHome,
     meta: { requiresAuth: true },
   },
   {
@@ -46,7 +46,7 @@ router.beforeEach((to, from, next) => {
   if (to.meta.requiresAuth && !isAuthenticated) {
     next({ name: 'Login' });
   } else if (to.name === 'Login' && isAuthenticated) {
-    next({ name: 'Dashboard' });
+    next({ name: 'StudentHome' });
   }
   else {
     next();

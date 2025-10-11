@@ -13,13 +13,13 @@ export const useUserStore = defineStore('user', {
   actions: {
     async login(credentials) {
       try {
-        const response = await apiLogin(credentials);
-        const { access_token, user } = response.data;
-        this.token = access_token;
-        this.user = user;
-        localStorage.setItem('token', access_token);
-        localStorage.setItem('user', JSON.stringify(user));
-        router.push({ name: 'Dashboard' });
+  const response = await apiLogin(credentials);
+  const { access_token, student } = response.data;
+  this.token = access_token;
+  this.user = student;
+  localStorage.setItem('token', access_token);
+  localStorage.setItem('user', JSON.stringify(student));
+  router.push({ name: 'StudentHome' });
       } catch (error) {
         console.error('Login failed:', error);
         throw error;
