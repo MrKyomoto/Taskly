@@ -28,6 +28,7 @@
           {{ isRegister ? '已有账号？去登录' : '没有账号？去注册' }}
         </el-link>
       </div>
+      <el-button type="text" @click="fillTestAccount" class="test-account-btn">使用测试账号</el-button>
     </el-card>
   </div>
 </template>
@@ -120,6 +121,11 @@ const toggleRegister = () => {
   isRegister.value = !isRegister.value;
   formRef.value.resetFields();
 };
+
+const fillTestAccount = () => {
+  formData.student_no = 'test123';
+  formData.password = 'password123';
+};
 </script>
 
 <style scoped>
@@ -147,5 +153,11 @@ const toggleRegister = () => {
 .switch-link {
   text-align: center;
   margin-top: 10px;
+}
+
+.test-account-btn {
+  margin-top: 10px;
+  color: #409eff;
+  cursor: pointer;
 }
 </style>
