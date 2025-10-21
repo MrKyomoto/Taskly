@@ -24,7 +24,7 @@ from app.util.parse_identity import (
 )
 
 # 认证相关路由蓝图
-auth_bp = Blueprint('student_auth', __name__, url_prefix='/api/auth/students')
+student_auth_bp = Blueprint('student_auth', __name__, url_prefix='/api/auth/students')
 
 # 学生资源路由蓝图
 student_bp = Blueprint('students', __name__, url_prefix='/api/students')
@@ -32,7 +32,7 @@ student_bp = Blueprint('students', __name__, url_prefix='/api/students')
 # 认证接口
 
 
-@auth_bp.route('/login', methods=['POST'])
+@student_auth_bp.route('/login', methods=['POST'])
 def login():
     """学生登录接口"""
     data = request.get_json()
@@ -41,7 +41,7 @@ def login():
     return handle_student_login(data)
 
 
-@auth_bp.route('/register', methods=['POST'])
+@student_auth_bp.route('/register', methods=['POST'])
 def register():
     """学生注册接口"""
     data = request.get_json()
