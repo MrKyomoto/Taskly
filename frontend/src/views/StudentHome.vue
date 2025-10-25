@@ -34,31 +34,7 @@
 		<main class="content">
 			<el-skeleton v-if="loading" animated :count="4" />
 			<template v-else>
-				<section class="overview-grid">
-					<el-card shadow="never" class="welcome-card">
-						<div class="card-title">欢迎回来</div>
-						<div class="welcome-body">
-							<div>
-								<p class="welcome-name">{{ profile?.name || '同学' }}</p>
-								<p class="welcome-semester">当前学期：{{ currentSemester || '未设置' }}</p>
-							</div>
-							<div class="quick-stats">
-								<div class="stat-block">
-									<span class="stat-label">待提交作业</span>
-									<span class="stat-value">{{ homeworkStats.pending }}</span>
-								</div>
-								<div class="stat-block">
-									<span class="stat-label">本周截止</span>
-									<span class="stat-value">{{ homeworkStats.dueThisWeek }}</span>
-								</div>
-								<div class="stat-block">
-									<span class="stat-label">今天未完成</span>
-									<span class="stat-value">{{ homeworkStats.todayPending }}</span>
-								</div>
-							</div>
-						</div>
-					</el-card>
-
+				<section class="time-management-area">
 					<el-card shadow="never" class="deadline-card">
 						<div class="card-title">最近截止提醒</div>
 						<div class="deadline-body">
@@ -72,6 +48,42 @@
 								</el-tag>
 							</div>
 							<el-empty v-else description="暂无即将截止的作业" :image-size="60" />
+						</div>
+					</el-card>
+					<el-card shadow="never" class="calendar-card">
+						<template #header>
+							<div class="calendar-header">
+								<span class="card-title">截止日期日历</span>
+								<el-button size="small" text @click="clearDateFilter">清空筛选</el-button>
+							</div>
+						</template>
+						<el-calendar v-model="calendarViewDate">
+							<template #date-cell="{ data }">
+								<div
+									class="calendar-cell"
+									:class="calendarCellClass(data)"
+									@click="handleDateSelect(data.day)"
+								>
+									<span class="day-number">{{ data.text }}</span>
+									<el-badge
+										v-if="deadlineCountByDate[data.day]"
+										:value="deadlineCountByDate[data.day]"
+										class="deadline-badge"
+									/>
+								</div>
+							</template>
+						</el-calendar>
+					</el-card>
+				</section>
+
+				<section class="overview-grid">
+					<el-card shadow="never" class="welcome-card">
+						<div class="card-title">欢迎回来</div>
+						<div class="welcome-body">
+							<div>
+								<p class="welcome-name">{{ profile?.name || '同学' }}</p>
+								<p class="welcome-semester">当前学期：{{ currentSemester || '未设置' }}</p>
+							</div>
 						</div>
 					</el-card>
 
@@ -95,7 +107,21 @@
 					<template #header>
 						<div class="card-header">
 							<div class="card-title">作业列表</div>
-							  <el-tabs v-model="activeCourseTab">
+							<div class="quick-stats-in-header">
+								<div class="stat-block">
+									<span class="stat-label">待提交作业</span>
+									<span class="stat-value">{{ homeworkStats.pending }}</span>
+								</div>
+								<div class="stat-block">
+									<span class="stat-label">本周截止</span>
+									<span class="stat-value">{{ homeworkStats.dueThisWeek }}</span>
+								</div>
+								<div class="stat-block">
+									<span class="stat-label">今天未完成</span>
+									<span class="stat-value">{{ homeworkStats.todayPending }}</span>
+								</div>
+							</div>
+							<el-tabs v-model="activeCourseTab">
 								<el-tab-pane label="全部课程" name="all" />
 								<el-tab-pane
 									v-for="course in courses"
@@ -145,8 +171,9 @@
 									size="small"
 									:disabled="assignment.status === 'overdue'"
 									@click="goToHomework(assignment)"
+									class="submit-button"
 								>
-									提交
+									查看详情
 								</el-button>
 							</div>
 						</el-card>
@@ -154,96 +181,77 @@
 					<el-empty v-else description="暂无符合筛选条件的作业" />
 				</el-card>
 
-				<el-card shadow="never" class="gantt-card">
-					<template #header>
-						<div class="card-title">作业甘特图</div>
-					</template>
-					<div v-if="ganttAssignments.length" class="gantt-wrapper">
-						<div class="gantt-legend">
-							<span v-for="item in ganttLegend" :key="item.status">
-								<span class="legend-color" :style="{ backgroundColor: item.color }"></span>
-								{{ item.label }}
-							</span>
-						</div>
-						<div class="gantt-chart">
-							<div v-for="assignment in ganttAssignments" :key="assignment.uid" class="gantt-row">
-								<div class="gantt-label">{{ assignment.title }}</div>
-								<div class="gantt-bar-container">
-									<div
-										class="gantt-bar"
-										:class="`status-${assignment.status}`"
-										:style="getGanttStyle(assignment)"
-										:title="`${assignment.course.course_name} · ${assignment.title}`"
-									></div>
-								</div>
-							</div>
-						</div>
-					</div>
-					<el-empty v-else description="暂无作业可展示" />
-				</el-card>
+				<el-card shadow="never" class="insights-card">
+					<el-tabs>
+						<el-tab-pane label="数据洞察">
+							<div class="insights-content">
+								<el-card shadow="never" class="gantt-card">
+									<template #header>
+										<div class="card-title">作业甘特图</div>
+									</template>
+									<div v-if="ganttAssignments.length" class="gantt-wrapper">
+										<div class="gantt-legend">
+											<span v-for="item in ganttLegend" :key="item.status">
+												<span class="legend-color" :style="{ backgroundColor: item.color }"></span>
+												{{ item.label }}
+											</span>
+										</div>
+										<div class="gantt-chart">
+											<div v-for="assignment in ganttAssignments" :key="assignment.uid" class="gantt-row">
+												<div class="gantt-label">{{ assignment.title }}</div>
+												<div class="gantt-bar-container">
+													<div
+														class="gantt-bar"
+														:class="`status-${assignment.status}`"
+														:style="getGanttStyle(assignment)"
+														:title="`${assignment.course.course_name} · ${assignment.title}`"
+													></div>
+												</div>
+											</div>
+										</div>
+									</div>
+									<el-empty v-else description="暂无作业可展示" />
+								</el-card>
 
-				<el-card shadow="never" class="history-card">
-					<template #header>
-						<div class="card-title">提交统计与历史</div>
-					</template>
-					<div class="history-body" v-if="recentSubmissions.length">
-						<div class="history-stats">
-							<div class="stat-block">
-								<span class="stat-label">按时提交率</span>
-								<span class="stat-value">{{ onTimeRate }}%</span>
+								<el-card shadow="never" class="history-card">
+									<template #header>
+										<div class="card-title">提交统计与历史</div>
+									</template>
+									<div class="history-body" v-if="recentSubmissions.length">
+										<div class="history-stats">
+											<div class="stat-block">
+												<span class="stat-label">按时提交率</span>
+												<span class="stat-value">{{ onTimeRate }}%</span>
+											</div>
+											<div class="stat-block">
+												<span class="stat-label">总提交数</span>
+												<span class="stat-value">{{ recentSubmissions.length }}</span>
+											</div>
+										</div>
+										<el-timeline>
+											<el-timeline-item
+												v-for="item in recentSubmissions"
+												:key="item.uid"
+												:timestamp="formatDateTime(item.submissionDate)"
+												placement="top"
+												:type="statusMeta(item.status).timelineType"
+											>
+												<p>{{ item.course.course_name }} · {{ item.title }}</p>
+												<p>状态：{{ statusMeta(item.status).label }}</p>
+												<p v-if="item.submission?.score !== undefined && item.submission?.score !== null">
+													评分：{{ item.submission.score }} 分
+												</p>
+											</el-timeline-item>
+										</el-timeline>
+									</div>
+									<el-empty v-else description="暂无提交记录" />
+								</el-card>
 							</div>
-							<div class="stat-block">
-								<span class="stat-label">总提交数</span>
-								<span class="stat-value">{{ recentSubmissions.length }}</span>
-							</div>
-						</div>
-						<el-timeline>
-							<el-timeline-item
-								v-for="item in recentSubmissions"
-								:key="item.uid"
-								:timestamp="formatDateTime(item.submissionDate)"
-								placement="top"
-								:type="statusMeta(item.status).timelineType"
-							>
-								<p>{{ item.course.course_name }} · {{ item.title }}</p>
-								<p>状态：{{ statusMeta(item.status).label }}</p>
-								<p v-if="item.submission?.score !== undefined && item.submission?.score !== null">
-									评分：{{ item.submission.score }} 分
-								</p>
-							</el-timeline-item>
-						</el-timeline>
-					</div>
-					<el-empty v-else description="暂无提交记录" />
+						</el-tab-pane>
+					</el-tabs>
 				</el-card>
 			</template>
 		</main>
-
-		<aside class="right-sidebar">
-			<el-card shadow="never" class="calendar-card">
-				<template #header>
-					<div class="calendar-header">
-						<span class="card-title">截止日期日历</span>
-						<el-button size="small" text @click="clearDateFilter">清空筛选</el-button>
-					</div>
-				</template>
-				<el-calendar v-model="calendarViewDate">
-					<template #date-cell="{ data }">
-						<div
-							class="calendar-cell"
-							:class="calendarCellClass(data)"
-							@click="handleDateSelect(data.day)"
-						>
-							<span class="day-number">{{ data.text }}</span>
-							<el-badge
-								v-if="deadlineCountByDate[data.day]"
-								:value="deadlineCountByDate[data.day]"
-								class="deadline-badge"
-							/>
-						</div>
-					</template>
-				</el-calendar>
-			</el-card>
-		</aside>
 
 		<el-drawer v-model="profileDrawerVisible" title="个人资料" size="30%">
 			<div v-if="profile" class="profile-details">
@@ -741,6 +749,12 @@ onMounted(async () => {
 	gap: 16px;
 }
 
+.time-management-area {
+	display: grid;
+	grid-template-columns: 1fr 1fr;
+	gap: 16px;
+}
+
 .overview-grid {
 	display: grid;
 	grid-template-columns: repeat(auto-fit, minmax(240px, 1fr));
@@ -773,6 +787,25 @@ onMounted(async () => {
 .quick-stats {
 	display: flex;
 	gap: 12px;
+}
+
+.quick-stats-in-header {
+	display: flex;
+	gap: 12px;
+	align-items: center;
+}
+
+.quick-stats-in-header .stat-block {
+	padding: 4px 8px;
+	min-width: 70px;
+}
+
+.quick-stats-in-header .stat-label {
+	font-size: 10px;
+}
+
+.quick-stats-in-header .stat-value {
+	font-size: 16px;
 }
 
 .stat-block {
@@ -854,6 +887,8 @@ onMounted(async () => {
 	display: flex;
 	justify-content: space-between;
 	align-items: center;
+	flex-wrap: wrap;
+	gap: 16px;
 }
 
 .homework-grid {
@@ -865,10 +900,20 @@ onMounted(async () => {
 .homework-item {
 	border-radius: 12px;
 	transition: transform 0.2s ease;
+	position: relative;
+}
+
+.homework-item .submit-button {
+	opacity: 0;
+	transition: opacity 0.2s ease;
 }
 
 .homework-item:hover {
 	transform: translateY(-4px);
+}
+
+.homework-item:hover .submit-button {
+	opacity: 1;
 }
 
 .homework-header {
@@ -931,6 +976,12 @@ onMounted(async () => {
 	display: flex;
 	align-items: center;
 	gap: 4px;
+}
+
+.insights-card .insights-content {
+	display: grid;
+	grid-template-columns: 1fr 1fr;
+	gap: 16px;
 }
 
 .gantt-wrapper {
@@ -1018,13 +1069,6 @@ onMounted(async () => {
 	gap: 16px;
 }
 
-.right-sidebar {
-	width: 320px;
-	display: flex;
-	flex-direction: column;
-	gap: 16px;
-}
-
 .calendar-card {
 	flex: 1;
 }
@@ -1081,14 +1125,13 @@ onMounted(async () => {
 		flex-direction: column;
 	}
 
-	.sidebar,
-	.right-sidebar {
+	.sidebar {
 		width: 100%;
 		flex-direction: row;
 	}
 
-	.right-sidebar {
-		order: 3;
+	.time-management-area {
+		grid-template-columns: 1fr;
 	}
 }
 
@@ -1103,6 +1146,10 @@ onMounted(async () => {
 
 	.gantt-label {
 		width: 120px;
+	}
+
+	.insights-card .insights-content {
+		grid-template-columns: 1fr;
 	}
 }
 </style>

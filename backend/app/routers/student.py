@@ -127,7 +127,7 @@ def enroll_course():
     return handle_enroll_course(student_id, data.get('course_code'))
 
 
-@student_bp.route('me/courses/<course_id>/homeworks', methods=['GET'])
+@student_bp.route('/me/courses/<course_id>/homeworks', methods=['GET'])
 @jwt_required()
 def get_enrolled_course_homeworks(course_id):
     """获取某门课程的所有作业"""
@@ -162,7 +162,7 @@ def get_homework_submission(course_id, homework_id):
     return handle_get_student_submission(student_id, course_id, homework_id)
 
 
-@student_bp.route('me/homeworks/<homework_id>/upload-image', methods=['POST'])
+@student_bp.route('/me/homeworks/<homework_id>/upload-image', methods=['POST'])
 @jwt_required()
 def upload_homework_image(homework_id):
     identity_str = get_jwt_identity()
@@ -180,7 +180,7 @@ def upload_homework_image(homework_id):
     return handle_upload_homework_image(student_id, homework_id, files)
 
 
-@student_bp.route('me/homeworks/<homework_id>/submission', methods=['POST'])
+@student_bp.route('/me/homeworks/<homework_id>/submission', methods=['POST'])
 @jwt_required()
 def submit_homework(homework_id):
     identity_str = get_jwt_identity()
