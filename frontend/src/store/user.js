@@ -11,25 +11,30 @@ export const useUserStore = defineStore('user', {
     isAuthenticated: (state) => !!state.token,
   },
   actions: {
-    async login(credentials) {
+    // credentials: object, role: 'student' | 'teacher'
+    async login(credentials, role = 'student') {
       try {
-        const response = await loginApi(credentials);
-        const { access_token, student } = response.data;
+        const response = await loginApi(role, credentials);
+        const { access_token, student, teacher } = response.data;
+        const userObj = student || teacher || null;
+        const userRole = student ? 'student' : teacher ? 'teacher' : role;
         this.token = access_token;
-        this.user = student;
+        this.user = userObj ? { ...userObj, role: userRole } : null;
         localStorage.setItem('token', access_token);
-        localStorage.setItem('user', JSON.stringify(student));
+        localStorage.setItem('user', JSON.stringify(this.user));
+        // currently route to the main home (student home). If you add a teacher home, switch based on role here.
         router.push({ name: 'StudentHome' });
       } catch (error) {
         console.error('Login failed:', error);
         throw error;
       }
     },
-    async register(userInfo) {
+
+    // userInfo: object, role: 'student' | 'teacher'
+    async register(userInfo, role = 'student') {
       try {
-        await registerApi(userInfo);
-        // 注册后可以自动登录或提示用户登录
-        // 这里我们选择让用户手动登录
+        await registerApi(role, userInfo);
+        // 保持原有行为：注册成功后让用户手动登录（Login.vue 会提示）
       } catch (error) {
         console.error('Registration failed:', error);
         throw error;

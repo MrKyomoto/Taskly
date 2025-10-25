@@ -1,9 +1,18 @@
 import api from './index';
 
-export const login = (data) => {
-  return api.post('/auth/students/login', data);
+const plural = (role) => {
+  if (!role) return 'students';
+  return role === 'teacher' ? 'teachers' : 'students';
 };
 
-export const register = (data) => {
-  return api.post('/auth/students/register', data);
+// login(role, data) where role is 'student' (default) or 'teacher'
+export const login = (role = 'student', data) => {
+  const path = `/auth/${plural(role)}/login`;
+  return api.post(path, data);
+};
+
+// register(role, data) where role is 'student' (default) or 'teacher'
+export const register = (role = 'student', data) => {
+  const path = `/auth/${plural(role)}/register`;
+  return api.post(path, data);
 };
