@@ -4,6 +4,7 @@ import Login from '@/views/Login.vue';
 import StudentHome from '@/views/StudentHome.vue';
 import CourseDetail from '@/views/CourseDetail.vue';
 import HomeworkView from '@/views/HomeworkView.vue';
+import TeacherHome from '../views/TeacherHome.vue';
 
 const routes = [
   {
@@ -30,6 +31,12 @@ const routes = [
     name: 'HomeworkView',
     component: HomeworkView,
     props: true,
+    meta: { requiresAuth: true },
+  },
+  {
+    path: '/teacher/home',
+    name: 'TeacherHome',
+    component: TeacherHome,
     meta: { requiresAuth: true },
   }
 ];
