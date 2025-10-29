@@ -13,37 +13,6 @@ from werkzeug.security import (
     generate_password_hash,
 )
 import json
-# 模拟数据存储
-mock_students = {
-    1: {
-        "id": 1,
-        "student_no": "S2023001",
-        "name": "张三",
-        "password": "password123",  # MVP阶段使用明文，实际应哈希存储
-        "email": "zhangsan@example.com",
-        "phone": "13800138000"
-    }
-}
-
-mock_courses = {
-    1: {
-        "id": 1,
-        "code": "CS101",
-        "name": "计算机基础",
-        "description": "计算机入门课程"
-    },
-    2: {
-        "id": 2,
-        "code": "MA101",
-        "name": "高等数学",
-        "description": "大学数学基础"
-    }
-}
-
-# 学生选课关系 (student_id: list of course_ids)
-mock_enrollments = {
-    1: [1, 2]
-}
 
 
 def authenticate_student(student_no, password):
