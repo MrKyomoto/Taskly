@@ -1,0 +1,252 @@
+/* 智蓝学术 (Smart Academic) 全局主题样式 */
+
+/* 1. 全局变量：颜色 / 圆角 / 阴影 */
+:root {
+  /* 品牌主色：理性科技蓝 / Tailwind Blue-500 */
+  --app-primary: #3b82f6;
+  --app-primary-soft: rgba(59, 130, 246, 0.08);
+
+  /* 背景与文本 */
+  --app-bg: #f5f7fa;
+  --app-surface: #ffffff;
+  --app-border-subtle: #e5e7eb;
+  /* 标题 / 正文 / 次要信息颜色 */
+  --app-text-main: #303133;
+  --app-text-muted: #606266;
+  --app-text-soft: #909399;
+
+  /* 圆角与阴影 */
+  --app-radius-sm: 6px;
+  --app-radius-md: 8px;
+  --app-radius-lg: 12px;
+  --app-radius-xl: 16px;
+  --app-shadow-soft: 0 8px 24px rgba(15, 23, 42, 0.06);
+
+  /* Element Plus 主题覆盖 */
+  --el-color-primary: #3b82f6;
+  --el-border-radius-base: 8px;
+  --el-border-radius-small: 6px;
+  --el-border-radius-round: 999px;
+  --el-box-shadow-light: 0 4px 12px rgba(0, 0, 0, 0.05);
+}
+
+/* 2. 页面基础：背景 / 字体 / 布局 */
+html,
+body {
+  height: 100%;
+  margin: 0;
+  padding: 0;
+  background-color: var(--app-bg);
+  color: var(--app-text-main);
+  font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', system-ui,
+    'PingFang SC', 'Microsoft YaHei', sans-serif;
+  -webkit-font-smoothing: antialiased;
+}
+
+#app {
+  min-height: 100%;
+  background: radial-gradient(circle at top left, #f2f5ff 0, #f5f7fa 40%, #f5f7fa 100%);
+}
+
+/* 3. 通用布局容器（可用于各页面根节点） */
+.page-shell {
+  max-width: 1320px;
+  margin: 0 auto;
+  padding: 24px 24px 32px;
+}
+
+/* 4. Header 顶栏：统一为简洁高效风格 */
+.app-header {
+  height: 56px;
+  padding: 0 24px;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  background-color: rgba(255, 255, 255, 0.9);
+  backdrop-filter: blur(10px);
+  border-bottom: 1px solid rgba(148, 163, 184, 0.18);
+}
+
+.app-header-title {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  font-size: 20px;
+  font-weight: 600;
+  color: var(--app-text-main);
+  letter-spacing: 0.02em;
+}
+
+.app-header-title span.app-brand-dot {
+  width: 8px;
+  height: 8px;
+  border-radius: 50%;
+  background: linear-gradient(135deg, var(--app-primary), #4f46e5);
+}
+
+.app-header-actions {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+}
+
+/* 5. 卡片：去线留白，用阴影与圆角区分层级 */
+.el-card {
+  border: none !important;
+  border-radius: var(--app-radius-lg) !important;
+  box-shadow: var(--app-shadow-soft);
+  background-color: var(--app-surface);
+}
+
+/* 通用卡片类，适用于所有主要信息块 */
+.app-card {
+  border: none;
+  border-radius: 12px;
+  box-shadow: 0 2px 12px 0 rgba(0, 0, 0, 0.05);
+  background-color: var(--app-surface);
+  transition: all 0.3s ease;
+}
+
+.app-card:hover {
+  box-shadow: 0 6px 20px rgba(15, 23, 42, 0.12);
+  transform: translateY(-2px);
+}
+
+.el-card__header {
+  border-bottom: 1px solid rgba(229, 231, 235, 0.7);
+  padding: 12px 18px;
+}
+
+.el-card__body {
+  padding: 16px 18px 18px;
+}
+
+/* 6. 按钮：主色按钮更突出，其他按钮更轻盈 */
+.el-button--primary {
+  background: linear-gradient(135deg, #3370ff, #4f46e5);
+  border-color: transparent;
+  color: #fff;
+}
+
+.el-button--primary:hover,
+.el-button--primary:focus {
+  background: linear-gradient(135deg, #2858d5, #4338ca);
+}
+
+.el-button.is-text,
+.el-button.is-link {
+  border-color: transparent;
+  color: var(--app-primary);
+}
+
+/* 7. Menu / Sidebar：减线条，突出选中态 */
+.el-menu {
+  border-right: none !important;
+  background-color: transparent;
+}
+
+.el-menu-item,
+.el-sub-menu__title {
+  border-radius: 999px;
+  margin: 2px 4px;
+}
+
+.el-menu-item.is-active {
+  background: var(--app-primary-soft) !important;
+  color: var(--app-primary) !important;
+}
+
+/* 8. 表格：弱化边框，突出行 hover */
+.el-table {
+  --el-table-border-color: rgba(226, 232, 240, 0.8);
+  --el-table-header-bg-color: #f9fafb;
+  --el-table-row-hover-bg-color: rgba(248, 250, 252, 0.9);
+  border-radius: var(--app-radius-lg);
+  overflow: hidden;
+}
+
+.el-table th.el-table__cell {
+  font-weight: 600;
+  color: var(--app-text-muted);
+}
+
+.el-table td.el-table__cell {
+  border-bottom: 1px solid rgba(226, 232, 240, 0.6);
+}
+
+/* 9. Tag / 状态标签：更柔和的圆角胶囊 */
+.el-tag {
+  border-radius: 999px !important;
+  padding: 0 10px;
+}
+
+/* 10. 输入框与搜索框 */
+.el-input__wrapper {
+  border-radius: 999px !important;
+  box-shadow: 0 0 0 1px rgba(148, 163, 184, 0.35) inset;
+}
+
+.el-input__wrapper.is-focus {
+  box-shadow: 0 0 0 1px var(--app-primary) inset;
+}
+
+/* 11. 滚动条美化（Chrome / Edge） */
+*::-webkit-scrollbar {
+  width: 8px;
+  height: 8px;
+}
+
+*::-webkit-scrollbar-track {
+  background: transparent;
+}
+
+*::-webkit-scrollbar-thumb {
+  background: rgba(148, 163, 184, 0.6);
+  border-radius: 999px;
+}
+
+*::-webkit-scrollbar-thumb:hover {
+  background: rgba(107, 114, 128, 0.9);
+}
+
+/* 12. 通用辅助类 */
+.text-muted {
+  color: var(--app-text-muted);
+}
+
+.text-soft {
+  color: var(--app-text-soft);
+}
+
+.card-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(260px, 1fr));
+  gap: 16px;
+}
+
+.section-title-row {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  margin-bottom: 12px;
+}
+
+.section-title-row h2 {
+  font-size: 18px;
+  font-weight: 600;
+  margin: 0;
+}
+
+.section-title-row .section-subtitle {
+  font-size: 13px;
+  color: var(--app-text-soft);
+}
+
+/* 13. el-main 布局容器：控制内容宽度与左右留白 */
+.el-main {
+  padding: 24px;
+  max-width: 1200px;
+  margin: 0 auto;
+  box-sizing: border-box;
+}
+
