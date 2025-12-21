@@ -21,6 +21,13 @@ const routes = [
     meta: { requiresAuth: true },
   },
   {
+    path: '/semester/:semester',
+    name: 'HistorySemesterHome',
+    component: StudentHome,
+    props: true,
+    meta: { requiresAuth: true },
+  },
+  {
     path: '/courses/:id',
     name: 'CourseDetail',
     component: CourseDetail,
@@ -48,9 +55,23 @@ const routes = [
     meta: { requiresAuth: true },
   },
   {
+    path: '/semester/:semester/homeworks',
+    name: 'HistorySemesterAllHomeworksView',
+    component: () => import('@/views/AllHomeworksView.vue'),
+    props: true,
+    meta: { requiresAuth: true },
+  },
+  {
     path: '/homeworks/pending',
     name: 'PendingHomeworksView',
     component: () => import('@/views/AllHomeworksView.vue'),
+    meta: { requiresAuth: true },
+  },
+  {
+    path: '/semester/:semester/homeworks/pending',
+    name: 'HistorySemesterPendingHomeworksView',
+    component: () => import('@/views/AllHomeworksView.vue'),
+    props: true,
     meta: { requiresAuth: true },
   },
   {
@@ -60,9 +81,23 @@ const routes = [
     meta: { requiresAuth: true },
   },
   {
+    path: '/semester/:semester/homeworks/submitted',
+    name: 'HistorySemesterSubmittedHomeworksView',
+    component: () => import('@/views/AllHomeworksView.vue'),
+    props: true,
+    meta: { requiresAuth: true },
+  },
+  {
     path: '/homeworks/completed',
     name: 'CompletedHomeworksView',
     component: () => import('@/views/AllHomeworksView.vue'),
+    meta: { requiresAuth: true },
+  },
+  {
+    path: '/semester/:semester/homeworks/completed',
+    name: 'HistorySemesterCompletedHomeworksView',
+    component: () => import('@/views/AllHomeworksView.vue'),
+    props: true,
     meta: { requiresAuth: true },
   },
   {

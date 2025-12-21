@@ -5,6 +5,8 @@ import router from './router';
 import ElementPlus from 'element-plus';
 import 'element-plus/dist/index.css';
 import './assets/styles/main.css';
+import './assets/styles/ui-enhancements.css';
+import './assets/styles/animations.css';
 import { useUserStore } from './store/user';
 
 const app = createApp(App);

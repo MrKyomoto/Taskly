@@ -1,10 +1,20 @@
 <template>
-	<div class="student-home">
-		<el-header class="header">
+	<div class="student-home fade-in" :style="{ backgroundColor: personalizationStore.backgroundColor }">
+		<el-header class="header" :style="headerStyle">
 			<div class="header-content">
 				<h1 class="header-title">Taskly</h1>
 				<div class="header-actions">
+					<!-- 助教切换按钮 -->
+					<el-button 
+						v-if="userStore.user?.role === 'ta'" 
+						type="warning" 
+						@click="handleSwitchRole"
+						:icon="UserFilled"
+					>
+						切换到教师端
+					</el-button>
 					<el-button type="primary" @click="showEnrollDialog = true" :icon="Plus">加入课程</el-button>
+					<el-button :icon="Setting" @click="showPersonalization = true" circle />
 					<el-dropdown @command="handleCommand">
 						<span class="dropdown-trigger">
 							{{ profile?.name || '同学' }}
@@ -21,7 +31,7 @@
 			</div>
 		</el-header>
 		<div class="student-home-container">
-			<aside class="sidebar">
+			<aside class="sidebar" :style="sidebarStyle" v-if="personalizationStore.modules.sidebar.visible">
 			<div class="sidebar-header">
 				<h2>Taskly</h2>
 				<p class="student-name">{{ profile?.name ? `${profile.name} 同学` : '同学' }}</p>
@@ -37,11 +47,32 @@
 						<span>我的课程</span>
 					</template>
 					<el-menu-item
-						v-for="course in courses"
+						v-for="course in displayedNavCourses"
 						:key="course.id"
 						:index="`course-${course.id}`"
 					>
 						{{ course.course_name }}
+					</el-menu-item>
+					<el-menu-item 
+						v-if="currentSemesterCourses.length > maxNavCoursesDisplay"
+						index="view-all-courses"
+						@click="router.push({ name: 'AllHomeworksView' })"
+					>
+						查看更多课程...
+					</el-menu-item>
+					<el-menu-item 
+						v-if="isHistorySemesterMode"
+						index="back-to-current-semester"
+						@click="router.push({ name: 'StudentHome' })"
+					>
+						返回当前学期
+					</el-menu-item>
+					<el-menu-item 
+						v-if="!isHistorySemesterMode && historySemesters.length > 0"
+						index="history-semesters"
+						@click="showHistorySemesterDialog = true"
+					>
+						查看历史学期课程
 					</el-menu-item>
 				</el-sub-menu>
 				<el-menu-item index="all">所有作业</el-menu-item>
@@ -52,7 +83,7 @@
 			</el-menu>
 		</aside>
 
-		<main class="content">
+		<main class="content" :style="contentStyle">
 			<el-skeleton v-if="loading" animated :count="4" />
 			<template v-else>
 				<!-- 全局搜索框 -->
@@ -77,7 +108,10 @@
 						shadow="always"
 					>
 						<div class="search-results-header">
-							<span class="results-count">找到 {{ searchResults.length }} 个结果</span>
+							<span class="results-count">
+								找到 {{ searchResults.length }} 个结果
+								<span v-if="searchResults.length >= 50" class="results-limit-hint">（已限制显示前50个）</span>
+							</span>
 						</div>
 						
 						<!-- 课程结果 -->
@@ -132,7 +166,9 @@
 						<div class="welcome-body">
 							<div>
 								<p class="welcome-name">{{ profile?.name || '同学' }}</p>
-								<p class="welcome-semester">当前学期：{{ currentSemester || '未设置' }}</p>
+								<p class="welcome-semester">
+									{{ isHistorySemesterMode ? `历史学期：${viewingSemester}` : `当前学期：${currentSemester || '未设置'}` }}
+								</p>
 							</div>
 						</div>
 					</el-card>
@@ -157,10 +193,31 @@
 				<section class="course-center" v-if="!searchQuery">
 					<div class="section-header">
 						<h2 class="section-title">我的课程</h2>
+						<div class="section-header-right">
+							<span class="course-count" v-if="currentSemesterCourses.length > 0">共 {{ currentSemesterCourses.length }} 门课程</span>
+							<el-button 
+								v-if="isHistorySemesterMode" 
+								type="primary" 
+								text 
+								@click="router.push({ name: 'StudentHome' })"
+								style="margin-left: 12px;"
+							>
+								返回当前学期
+							</el-button>
+							<el-button 
+								v-else-if="historySemesters.length > 0" 
+								type="primary" 
+								text 
+								@click="showHistorySemesterDialog = true"
+								style="margin-left: 12px;"
+							>
+								查看历史学期课程
+							</el-button>
 					</div>
-					<el-row v-if="courses.length > 0" :gutter="20">
+					</div>
+					<el-row v-if="displayedCourses.length > 0" :gutter="20">
 						<el-col
-							v-for="course in courses"
+							v-for="course in displayedCourses"
 							:key="course.id"
 							:xs="24"
 							:sm="12"
@@ -205,7 +262,27 @@
 							</el-card>
 						</el-col>
 					</el-row>
-					<el-empty v-else description="暂无课程，输入课程代码即可开始学习" :image-size="100" />
+					<div v-if="courses.length > maxCoursesDisplay" class="course-more-actions">
+						<el-button 
+							v-if="!showAllCourses" 
+							type="primary" 
+							text 
+							@click="showAllCourses = true"
+						>
+							查看更多课程 ({{ courses.length - maxCoursesDisplay }})
+							<el-icon><ArrowDown /></el-icon>
+						</el-button>
+						<el-button 
+							v-else 
+							type="primary" 
+							text 
+							@click="showAllCourses = false"
+						>
+							收起
+							<el-icon><ArrowUp /></el-icon>
+						</el-button>
+					</div>
+					<el-empty v-if="courses.length === 0" description="暂无课程，输入课程代码即可开始学习" :image-size="100" />
 				</section>
 
 				<section class="time-management-area" v-if="!searchQuery">
@@ -253,12 +330,23 @@
 									:class="calendarCellClass(data)"
 									@click="handleDateSelect(data.day)"
 								>
+									<div class="calendar-date-info">
 									<span class="day-number">{{ data.text }}</span>
-									<el-badge
-										v-if="deadlineCountByDate[data.day]"
-										:value="deadlineCountByDate[data.day]"
-										class="deadline-badge"
-									/>
+										<span class="month-day">{{ formatMonthDay(data.day) }}</span>
+									</div>
+									<!-- 显示该日期的作业列表 -->
+									<div v-if="getAssignmentsForDate(data.day).length > 0" class="calendar-assignments">
+										<div
+											v-for="(assignment, idx) in getAssignmentsForDate(data.day)"
+											:key="assignment.uid"
+											class="calendar-assignment-item"
+											:class="{ 'is-submitted': assignment.submission }"
+											@click.stop="goToHomework(assignment)"
+										>
+											<span class="assignment-title">{{ assignment.title }}</span>
+											<el-icon v-if="assignment.submission" class="assignment-status-icon"><Check /></el-icon>
+										</div>
+									</div>
 								</div>
 							</template>
 						</el-calendar>
@@ -283,23 +371,41 @@
 									<span class="stat-value">{{ homeworkStats.todayPending }}</span>
 								</div>
 							</div>
+							<div class="tabs-with-count">
 							<el-tabs v-model="activeCourseTab">
-								<el-tab-pane label="全部课程" name="all" />
+									<el-tab-pane name="all">
+										<template #label>
+											<span>全部课程</span>
+											<el-button 
+												v-if="isHistorySemesterMode"
+												type="primary" 
+												text 
+												size="small"
+												style="margin-left: 8px;"
+												@click.stop="router.push({ name: 'StudentHome' })"
+											>
+												返回当前学期
+											</el-button>
+										</template>
+									</el-tab-pane>
 								<el-tab-pane
-									v-for="course in courses"
+										v-for="course in currentSemesterCourses"
 									:key="course.id"
 									:label="course.course_name"
 									:name="String(course.id)"
 								/>
 							</el-tabs>
+								<span class="homework-count" v-if="validAssignments.length > 0">共 {{ validAssignments.length }} 项</span>
+							</div>
 						</div>
 					</template>
 
-					<div v-if="filteredAssignments.length" class="homework-grid">
+					<div v-if="displayedAssignments.length" class="homework-grid-wrapper">
+						<transition-group name="fade-slide" tag="div" class="homework-grid">
 						<el-card
-							v-for="assignment in filteredAssignments"
+								v-for="assignment in displayedAssignments"
 							:key="assignment.uid"
-							class="homework-item"
+								class="homework-item card-hover"
 							shadow="hover"
 						>
 							<div class="homework-header">
@@ -336,36 +442,164 @@
 								</el-button>
 							</div>
 						</el-card>
+						</transition-group>
 					</div>
-					<el-empty v-else description="暂无符合筛选条件的作业" />
+					<div v-if="validAssignments.length > maxHomeworksDisplay" class="homework-more-actions">
+						<el-button 
+							v-if="!showAllHomeworks" 
+							type="primary" 
+							text 
+							@click="showAllHomeworks = true"
+						>
+							查看更多作业 ({{ validAssignments.length - maxHomeworksDisplay }})
+							<el-icon><ArrowDown /></el-icon>
+						</el-button>
+						<el-button 
+							v-else 
+							type="primary" 
+							text 
+							@click="showAllHomeworks = false"
+						>
+							收起
+							<el-icon><ArrowUp /></el-icon>
+						</el-button>
+					<el-button 
+						type="primary" 
+						text 
+						@click="isHistorySemesterMode ? router.push({ name: 'HistorySemesterAllHomeworksView', params: { semester: viewingSemester } }) : router.push({ name: 'AllHomeworksView' })"
+						style="margin-left: 12px;"
+					>
+						查看全部作业
+						<el-icon><Right /></el-icon>
+					</el-button>
+					</div>
+					<el-empty v-if="filteredAssignments.length === 0" description="暂无符合筛选条件的作业" />
 				</el-card>
 
-				<el-card shadow="never" class="insights-card">
+				<el-card shadow="never" class="insights-card" v-if="!searchQuery">
 					<el-tabs>
 						<el-tab-pane label="数据洞察">
 							<div class="insights-content">
 								<el-card shadow="never" class="gantt-card">
 									<template #header>
-										<div class="card-title">作业甘特图</div>
+										<div class="gantt-header">
+											<div class="gantt-title-wrapper">
+												<span class="card-title">作业时间轴</span>
+												<el-tooltip content="横条表示作业截止时间，红色竖线是今天，点击横条查看详情" placement="top">
+													<el-icon class="gantt-help-icon"><QuestionFilled /></el-icon>
+												</el-tooltip>
+											</div>
+											<div class="gantt-controls">
+												<el-select
+													v-model="ganttCourseFilter"
+													placeholder="筛选课程"
+													clearable
+													size="small"
+													style="width: 150px; margin-right: 8px;"
+												>
+													<el-option label="全部课程" value="all" />
+													<el-option
+														v-for="course in courses"
+														:key="course.id"
+														:label="course.course_name"
+														:value="course.id"
+													/>
+												</el-select>
+												<el-select
+													v-model="ganttStatusFilter"
+													placeholder="筛选状态"
+													clearable
+													size="small"
+													style="width: 120px; margin-right: 8px;"
+												>
+													<el-option label="全部状态" value="all" />
+													<el-option
+														v-for="item in ganttLegend"
+														:key="item.status"
+														:label="item.label"
+														:value="item.status"
+													/>
+												</el-select>
+												<el-button-group size="small">
+													<el-button @click="zoomGantt('week')" :type="ganttZoom === 'week' ? 'primary' : ''">本周</el-button>
+													<el-button @click="zoomGantt('month')" :type="ganttZoom === 'month' ? 'primary' : ''">本月</el-button>
+													<el-button @click="zoomGantt('all')" :type="ganttZoom === 'all' ? 'primary' : ''">全部</el-button>
+												</el-button-group>
+											</div>
+										</div>
 									</template>
-									<div v-if="ganttAssignments.length" class="gantt-wrapper">
+									<div v-if="filteredGanttAssignments.length" class="gantt-wrapper">
+										<!-- 说明文字 -->
+										<div class="gantt-intro">
+											<span class="intro-text">横条表示作业截止时间，红色竖线是今天，点击横条可查看详情</span>
+										</div>
+										<!-- 图例 -->
 										<div class="gantt-legend">
-											<span v-for="item in ganttLegend" :key="item.status">
+											<span class="legend-title">状态说明：</span>
+											<span v-for="item in ganttLegend" :key="item.status" class="legend-item">
 												<span class="legend-color" :style="{ backgroundColor: item.color }"></span>
-												{{ item.label }}
+												<span class="legend-text">{{ item.label }}</span>
 											</span>
 										</div>
+										<!-- 时间轴刻度 -->
+										<div class="gantt-timeline-header">
+											<div class="timeline-label">时间</div>
+											<div
+												v-for="tick in timelineTicks"
+												:key="tick.date"
+												class="timeline-tick"
+												:style="{ left: `${tick.position}%` }"
+											>
+												<div class="tick-line"></div>
+												<div class="tick-label">{{ tick.label }}</div>
+											</div>
+											<!-- 今天指示线 -->
+											<div
+												v-if="isTodayInRange"
+												class="timeline-today-marker"
+												:style="{ left: `${todayPosition}%` }"
+											>
+												<div class="today-line"></div>
+												<div class="today-label">今天</div>
+											</div>
+										</div>
 										<div class="gantt-chart">
-											<div v-for="assignment in ganttAssignments" :key="assignment.uid" class="gantt-row">
-												<div class="gantt-label">{{ assignment.title }}</div>
+											<div
+												v-for="assignment in filteredGanttAssignments"
+												:key="assignment.uid"
+												class="gantt-row"
+												@click="goToHomework(assignment)"
+											>
+												<div class="gantt-label">
+													<div class="gantt-label-title">{{ assignment.title }}</div>
+													<div class="gantt-label-course">{{ assignment.course.course_name }}</div>
+													<div class="gantt-label-deadline">截止：{{ formatDateTime(assignment.deadlineDate) }}</div>
+												</div>
 												<div class="gantt-bar-container">
 													<div
 														class="gantt-bar"
 														:class="`status-${assignment.status}`"
 														:style="getGanttStyle(assignment)"
-														:title="`${assignment.course.course_name} · ${assignment.title}`"
+													>
+														<div class="gantt-bar-content">
+															<span class="gantt-bar-deadline">{{ formatGanttDate(assignment.deadlineDate) }}</span>
+														</div>
+													</div>
+													<!-- 当前时间指示线 -->
+													<div
+														v-if="isTodayInRange"
+														class="gantt-today-line"
+														:style="{ left: `${todayPosition}%` }"
 													></div>
 												</div>
+											</div>
+										</div>
+										<div class="gantt-footer">
+											<div class="gantt-stats">
+												<span>共显示 {{ filteredGanttAssignments.length }} 个作业</span>
+												<span v-if="ganttCourseFilter !== 'all' || ganttStatusFilter !== 'all'" class="filter-hint">
+													（已筛选）
+												</span>
 											</div>
 										</div>
 									</div>
@@ -376,7 +610,7 @@
 									<template #header>
 										<div class="card-title">提交统计与历史</div>
 									</template>
-									<div class="history-body" v-if="recentSubmissions.length">
+									<div class="history-body" v-if="allSubmissions.length">
 										<div class="history-stats">
 											<div class="stat-block">
 												<span class="stat-label">按时提交率</span>
@@ -384,7 +618,7 @@
 											</div>
 											<div class="stat-block">
 												<span class="stat-label">总提交数</span>
-												<span class="stat-value">{{ recentSubmissions.length }}</span>
+												<span class="stat-value">{{ allSubmissions.length }}</span>
 											</div>
 										</div>
 										<el-timeline>
@@ -402,6 +636,11 @@
 												</p>
 											</el-timeline-item>
 										</el-timeline>
+										<div v-if="allSubmissions.length > recentSubmissions.length" class="more-submissions-hint">
+											<el-button type="primary" text @click="goToAllHomeworks('submitted')">
+												查看更多提交记录 (共 {{ allSubmissions.length }} 条)
+											</el-button>
+										</div>
 									</div>
 									<el-empty v-else description="暂无提交记录" />
 								</el-card>
@@ -503,6 +742,68 @@
 			<el-empty v-else description="尚未获取资料" />
 		</el-drawer>
 
+		<!-- 个性化设置面板 -->
+		<PersonalizationPanel v-model="showPersonalization" />
+
+		<!-- 历史学期选择对话框 -->
+		<el-dialog v-model="showHistorySemesterDialog" title="选择历史学期" width="500px">
+			<div class="history-semester-dialog">
+				<p class="dialog-tip">请选择要查看的历史学期：</p>
+				<el-select
+					v-model="selectedHistorySemester"
+					placeholder="按时间顺序选择学期（最近 → 最远）"
+					clearable
+					style="width: 100%;"
+					size="large"
+				>
+					<el-option
+						v-for="semester in historySemesters"
+						:key="semester"
+						:label="semester"
+						:value="semester"
+					/>
+				</el-select>
+				<div v-if="selectedHistorySemester && filteredHistoryCourses.length > 0" class="history-courses-preview">
+					<p class="preview-title">该学期的课程：</p>
+					<div class="history-courses-list">
+						<el-card
+							v-for="course in displayedHistoryCourses"
+							:key="course.id"
+							class="history-course-card"
+							shadow="hover"
+							@click="goToHistoryCourseDetail(course)"
+						>
+							<div class="history-course-info">
+								<h4>{{ course.course_name }}</h4>
+								<p class="course-code">课程号：{{ course.course_code }}</p>
+								<el-tag type="info" size="small">{{ course.semester }}</el-tag>
+							</div>
+						</el-card>
+					</div>
+					<div v-if="filteredHistoryCourses.length > maxHistoryCoursesDisplay" class="history-courses-footer">
+						<el-button 
+							type="primary" 
+							text 
+							@click="showAllHistoryCourses = !showAllHistoryCourses"
+						>
+							{{ showAllHistoryCourses ? '收起' : `查看更多 (共 ${filteredHistoryCourses.length} 门课程)` }}
+						</el-button>
+					</div>
+				</div>
+				<el-empty v-else-if="selectedHistorySemester && filteredHistoryCourses.length === 0" description="该学期暂无课程" :image-size="80" />
+			</div>
+			<template #footer>
+				<el-button @click="showHistorySemesterDialog = false">关闭</el-button>
+				<el-button 
+					type="primary" 
+					@click="goToHistorySemesterHome"
+					:disabled="!selectedHistorySemester"
+				>
+					查看该学期主页
+				</el-button>
+			</template>
+		</el-dialog>
+
 		<!-- 加入课程对话框 -->
 		<el-dialog v-model="showEnrollDialog" title="加入课程" width="400px">
 			<el-form>
@@ -545,10 +846,14 @@
 <script setup>
 import { computed, onMounted, onUnmounted, reactive, ref, watch } from 'vue';
 import { ElMessage, ElMessageBox } from 'element-plus';
-import { Paperclip, ArrowDown, Plus, Search, Reading, Document } from '@element-plus/icons-vue';
-import { useRouter, onBeforeRouteLeave } from 'vue-router';
+import { Paperclip, ArrowDown, ArrowUp, Plus, Search, Reading, Document, Setting, Right, QuestionFilled, Check, UserFilled } from '@element-plus/icons-vue';
+import { useRouter, useRoute, onBeforeRouteLeave } from 'vue-router';
 import { useUserStore } from '@/store/user';
+import { usePersonalizationStore } from '@/store/personalization';
+import PersonalizationPanel from '@/components/PersonalizationPanel.vue';
+import { formatDateTime as formatDateUtil, formatRelativeTime, formatCountdown } from '@/utils/date-formatter';
 import { validatePassword } from '@/utils/validators';
+import { getCurrentSemester, isCurrentSemester } from '@/utils/semester';
 import {
 	fetchCourseHomeworks,
 	fetchHomeworkSubmission,
@@ -560,9 +865,12 @@ import {
 } from '@/api/student';
 
 const userStore = useUserStore();
+const personalizationStore = usePersonalizationStore();
 const router = useRouter();
+const route = useRoute();
 
 const loading = ref(false);
+const showPersonalization = ref(false);
 const profile = ref(null);
 const courses = ref([]);
 const assignments = ref([]);
@@ -576,6 +884,11 @@ const activeNavFilter = ref('all');
 const calendarViewDate = ref(new Date());
 const calendarSelectedDate = ref('');
 const dateRange = ref(null); // 日期范围筛选
+const showHistorySemesterDialog = ref(false); // 历史学期选择对话框
+const selectedHistorySemester = ref(''); // 选中的历史学期
+const showAllHistoryCourses = ref(false); // 是否显示所有历史课程
+const maxHistoryCoursesDisplay = ref(10); // 历史课程默认显示数量
+const maxNavCoursesDisplay = ref(20); // 导航栏课程默认显示数量
 const profileDrawerVisible = ref(false);
 const isEditing = ref(false);
 const hasChanged = ref(false);
@@ -615,10 +928,51 @@ const passwordForm = ref({
 });
 const passwordFormRef = ref(null);
 
+// 个性化样式
+const headerStyle = computed(() => {
+  const module = personalizationStore.modules.header;
+  return {
+    backgroundColor: module.backgroundColor,
+    color: module.textColor,
+  };
+});
+
+const sidebarStyle = computed(() => {
+  const module = personalizationStore.modules.sidebar;
+  return {
+    backgroundColor: module.backgroundColor,
+    color: module.textColor,
+  };
+});
+
+const contentStyle = computed(() => {
+  const module = personalizationStore.modules.content;
+  return {
+    backgroundColor: module.backgroundColor,
+    color: module.textColor,
+  };
+});
+
+// 卡片样式
+const cardStyle = computed(() => {
+  const module = personalizationStore.modules.card;
+  return {
+    backgroundColor: module.backgroundColor,
+    color: module.textColor,
+    borderColor: module.borderColor,
+  };
+});
+
 // 加入课程相关
 const showEnrollDialog = ref(false);
 const enrollCourseCode = ref('');
 const enrolling = ref(false);
+
+// 课程和作业显示控制
+const maxCoursesDisplay = 12; // 默认显示12个课程
+const showAllCourses = ref(false);
+const maxHomeworksDisplay = 15; // 默认显示15个作业
+const showAllHomeworks = ref(false);
 
 // 密码表单验证规则
 const validateNewPassword = (rule, value, callback) => {
@@ -674,7 +1028,11 @@ const fetchData = async () => {
 		]);
 
 		profile.value = profileRes.data;
+		// 获取所有课程，不要在这里过滤（过滤逻辑在计算属性中处理）
 		courses.value = coursesRes.data?.course_list || [];
+		
+		// 清空之前的作业数据，确保切换学期时不会显示其他学期的作业
+		assignments.value = [];
 
 		courses.value.forEach((course, index) => {
 			if (!courseColorMap.has(course.id)) {
@@ -682,7 +1040,12 @@ const fetchData = async () => {
 			}
 		});
 
-		// 构建搜索数据源（课程）
+		// 根据 viewingSemester 过滤要获取作业的课程（只获取当前查看学期的课程作业）
+		const coursesToFetch = viewingSemester.value 
+			? courses.value.filter(course => course.semester === viewingSemester.value)
+			: courses.value;
+
+		// 构建搜索数据源（包含所有课程，用于搜索功能）
 		searchSource.value = courses.value.map(course => ({
 			type: 'course',
 			title: course.course_name,
@@ -691,7 +1054,7 @@ const fetchData = async () => {
 			courseId: course.id,
 		}));
 
-		const homeworkPromises = courses.value.map(async (course) => {
+		const homeworkPromises = coursesToFetch.map(async (course) => {
 			try {
 				const hwRes = await fetchCourseHomeworks(course.id);
 				const list = hwRes.data?.homework_list || [];
@@ -742,18 +1105,69 @@ const fetchData = async () => {
 };
 
 const normalizeAssignment = (hw, course, submission) => {
-	const deadlineDate = hw.deadline ? new Date(hw.deadline) : null;
-	const createDate = hw.create_time ? new Date(hw.create_time) : null;
+	// 统一处理日期字符串格式，确保正确解析
+	const parseDate = (dateValue) => {
+		if (!dateValue) return null;
+		
+		// 如果已经是 Date 对象且有效
+		if (dateValue instanceof Date) {
+			return isNaN(dateValue.getTime()) ? null : dateValue;
+		}
+		
+		// 如果是字符串，尝试多种格式解析
+		if (typeof dateValue === 'string') {
+			// 先尝试替换 - 为 /（处理 YYYY-MM-DD 格式）
+			let dateStr = dateValue.replace(/-/g, '/');
+			// 移除可能的时间部分中的 T 和 Z
+			dateStr = dateStr.replace(/T/g, ' ').replace(/Z/g, '');
+			const date = new Date(dateStr);
+			if (!isNaN(date.getTime())) {
+				return date;
+			}
+			
+			// 如果失败，尝试直接解析
+			const date2 = new Date(dateValue);
+			if (!isNaN(date2.getTime())) {
+				return date2;
+			}
+			
+			console.warn('无法解析日期:', dateValue, '作业:', hw.title);
+			return null;
+		}
+		
+		// 其他类型，尝试直接转换
+		const date = new Date(dateValue);
+		return isNaN(date.getTime()) ? null : date;
+	};
+	
+	const deadlineDate = parseDate(hw.deadline);
+	const createDate = parseDate(hw.create_time);
 	const now = new Date();
 
-	const submissionDate = submission?.submit_time ? new Date(submission.submit_time.replace(/-/g, '/')) : null;
+	const submissionDate = submission?.submit_time ? parseDate(submission.submit_time) : null;
+	
+	// 调试信息：检查日期解析
+	if (hw.deadline && (!deadlineDate || isNaN(deadlineDate.getTime()))) {
+		console.error('日期解析失败:', {
+			title: hw.title,
+			原始deadline: hw.deadline,
+			deadline类型: typeof hw.deadline,
+			解析后: deadlineDate,
+		});
+	}
 
 	const attachments = parseAttachments(hw.image_urls);
 
+	// 验证日期有效性
+	if (deadlineDate && isNaN(deadlineDate.getTime())) {
+		console.error('无效的截止日期:', hw.title, '原始值:', hw.deadline, '解析后:', deadlineDate);
+	}
+
 	const status = deriveStatus({
 		isOverdue: hw.is_overdue,
-		deadlineDate,
+		deadlineDate: deadlineDate && !isNaN(deadlineDate.getTime()) ? deadlineDate : null,
 		submission,
+		submissionDate: submissionDate && !isNaN(submissionDate.getTime()) ? submissionDate : null,
 		now,
 	});
 
@@ -762,16 +1176,17 @@ const normalizeAssignment = (hw, course, submission) => {
 		id: hw.id,
 		title: hw.title,
 		content: hw.content,
-		deadlineDate,
-		deadlineKey: deadlineDate ? formatDateKey(deadlineDate) : '',
-		startDate: createDate || (deadlineDate ? new Date(deadlineDate.getTime() - 2 * 24 * 60 * 60 * 1000) : now),
+		max_score: hw.max_score || 100, // 作业满分，默认为100
+		deadlineDate: deadlineDate && !isNaN(deadlineDate.getTime()) ? deadlineDate : null,
+		deadlineKey: deadlineDate && !isNaN(deadlineDate.getTime()) ? formatDateKey(deadlineDate) : '',
+		startDate: createDate && !isNaN(createDate.getTime()) ? createDate : (deadlineDate && !isNaN(deadlineDate.getTime()) ? new Date(deadlineDate.getTime() - 2 * 24 * 60 * 60 * 1000) : now),
 		attachments,
 		submission,
-		submissionDate,
+		submissionDate: submissionDate && !isNaN(submissionDate.getTime()) ? submissionDate : null,
 		status,
 		course,
 		// 如果已完成，不显示"已逾期"，而是显示"已完成"
-		countdown: computeCountdown(deadlineDate, status, submission),
+		countdown: computeCountdown(deadlineDate && !isNaN(deadlineDate.getTime()) ? deadlineDate : null, status, submission),
 	};
 };
 
@@ -785,25 +1200,39 @@ const parseAttachments = (value) => {
 	}
 };
 
-const deriveStatus = ({ isOverdue, deadlineDate, submission, now }) => {
-	// 优先检查提交状态：已完成的作业一定不是已逾期
-	if (submission) {
-		// 如果已过ddl且已提交，显示为已完成
+const deriveStatus = ({ isOverdue, deadlineDate, submission, submissionDate, now }) => {
+	// 与AllHomeworksView.vue中的getStatusTag逻辑保持一致
 		const isOverdueNow = deadlineDate && deadlineDate < now;
-		if (submission.is_graded || isOverdueNow) {
+	
+	// 检查是否在ddl前提交：如果提交时间在ddl之后或没有提交时间，视为未在ddl前提交
+	const submittedBeforeDeadline = submissionDate && deadlineDate && submissionDate <= deadlineDate;
+	
+	// 如果已过ddl且没有在ddl前提交，即使有批改记录（老师批改0分），也应该显示"已逾期"
+	if (isOverdueNow && !submittedBeforeDeadline) {
+		return 'overdue';
+	}
+	
+	// 如果有提交记录（在ddl前提交的）
+	if (submission && submittedBeforeDeadline) {
+		// 如果已批改，显示为已完成
+		if (submission.is_graded) {
 			return 'completed';
 		} else {
 			return 'submitted';
 		}
 	}
-	// 只有在没有提交的情况下，才检查是否逾期
-	// 已逾期的作业包括超过ddl仍然是待提交的作业
-	if (isOverdue || (deadlineDate && deadlineDate < now)) {
+	
+	// 如果没有提交，再检查是否逾期
+	if (isOverdueNow) {
 		return 'overdue';
 	}
+	
+	// 没有截止日期，显示为待提交
 	if (!deadlineDate) {
 		return 'pending';
 	}
+	
+	// 有截止日期且未过期，根据时间判断
 	const diff = deadlineDate - now;
 	const hours = diff / (1000 * 60 * 60);
 	if (hours <= 48 && hours > 0) {
@@ -842,14 +1271,20 @@ const formatDateKey = (date) => {
 	return `${year}-${month}-${day}`;
 };
 
+// 格式化月日显示（如：12.14）
+const formatMonthDay = (dateString) => {
+	if (!dateString) return '';
+	const date = new Date(dateString);
+	const month = date.getMonth() + 1;
+	const day = date.getDate();
+	return `${month}.${day}`;
+};
+
 const formatDateTime = (date) => {
 	if (!date) return '—';
-	const year = date.getFullYear();
-	const month = `${date.getMonth() + 1}`.padStart(2, '0');
-	const day = `${date.getDate()}`.padStart(2, '0');
-	const hours = `${date.getHours()}`.padStart(2, '0');
-	const minutes = `${date.getMinutes()}`.padStart(2, '0');
-	return `${year}-${month}-${day} ${hours}:${minutes}`;
+	const d = date instanceof Date ? date : new Date(date);
+	if (isNaN(d.getTime())) return '—';
+	return formatDateUtil(d, 'YYYY-MM-DD HH:mm');
 };
 
 const statusMeta = (status) => {
@@ -872,8 +1307,77 @@ const filteredAssignments = computed(() => {
 	});
 });
 
+// 显示的课程列表（根据是否展开，只显示当前学期课程）
+const displayedCourses = computed(() => {
+	const currentCourses = currentSemesterCourses.value;
+	if (showAllCourses.value || currentCourses.length <= maxCoursesDisplay) {
+		return currentCourses;
+	}
+	return currentCourses.slice(0, maxCoursesDisplay);
+});
+
+// 未过期的作业列表（只显示截止日期在未来的作业，和甘特图逻辑一致）
+// 在历史学期模式下，显示所有作业（包括已过期的）
+const validAssignments = computed(() => {
+	// 如果是历史学期模式，显示所有作业
+	if (isHistorySemesterMode.value) {
+		return assignments.value;
+	}
+	
+	// 当前学期模式：只显示截止日期在未来的作业
+	const now = new Date();
+	const filtered = assignments.value.filter((a) => {
+		// 必须有截止日期
+		if (!a.deadlineDate) return false;
+		
+		// 确保 deadlineDate 是 Date 对象
+		let deadline = a.deadlineDate;
+		if (!(deadline instanceof Date)) {
+			deadline = new Date(deadline);
+		}
+		
+		// 检查日期是否有效
+		if (isNaN(deadline.getTime())) {
+			console.warn('无效的截止日期:', a.title, a.deadlineDate);
+			return false;
+		}
+		
+		// 只显示截止日期在未来的作业（比较到毫秒级别）
+		const isFuture = deadline.getTime() > now.getTime();
+		
+		// 调试信息（针对12.31的作业）
+		if (a.deadlineDate && a.deadlineDate.toString().includes('2025-12-31')) {
+			console.log('12.31作业检查:', {
+				title: a.title,
+				deadlineDate: a.deadlineDate,
+				deadlineTime: deadline.getTime(),
+				nowTime: now.getTime(),
+				isFuture: isFuture,
+				submission: a.submission ? '有提交' : '无提交',
+				status: a.status,
+			});
+		}
+		
+		return isFuture;
+	});
+	
+	console.log('validAssignments 总数:', filtered.length, '总作业数:', assignments.value.length);
+	return filtered;
+});
+
+// 显示的作业列表（根据是否展开）
+const displayedAssignments = computed(() => {
+	if (showAllHomeworks.value || validAssignments.value.length <= maxHomeworksDisplay) {
+		return validAssignments.value;
+	}
+	return validAssignments.value.slice(0, maxHomeworksDisplay);
+});
+
 const matchesCourse = (assignment) => {
-	if (activeCourseTab.value === 'all') return true;
+	if (activeCourseTab.value === 'all') {
+		// 只显示当前查看学期的作业（当前学期或历史学期）
+		return assignment.course.semester === viewingSemester.value;
+	}
 	return String(assignment.course.id) === activeCourseTab.value;
 };
 
@@ -905,8 +1409,24 @@ const matchesNavFilter = (assignment) => {
 	}
 };
 
+// 统计所有作业（包括已提交的）按日期分组（只统计当前查看学期的作业）
+const allAssignmentsByDate = computed(() => {
+	return assignments.value
+		.filter(assignment => assignment.course.semester === viewingSemester.value)
+		.reduce((acc, assignment) => {
+			// 统计所有有截止日期的作业（包括已提交的）
+			if (assignment.deadlineKey) {
+				acc[assignment.deadlineKey] = (acc[assignment.deadlineKey] || 0) + 1;
+			}
+			return acc;
+		}, {});
+});
+
+// 只统计未提交的作业（用于显示徽章）（只统计当前查看学期的作业）
 const deadlineCountByDate = computed(() => {
-	return assignments.value.reduce((acc, assignment) => {
+	return assignments.value
+		.filter(assignment => assignment.course.semester === viewingSemester.value)
+		.reduce((acc, assignment) => {
 		// 只统计未提交的作业
 		if (assignment.deadlineKey && !assignment.submission) {
 			acc[assignment.deadlineKey] = (acc[assignment.deadlineKey] || 0) + 1;
@@ -917,12 +1437,42 @@ const deadlineCountByDate = computed(() => {
 
 const calendarCellClass = (data) => {
 	const classes = [];
-	if (calendarSelectedDate.value === data.day) {
+	
+	// 将 data.day 转换为日期键格式
+	let dayKey = '';
+	if (typeof data.day === 'string') {
+		dayKey = data.day;
+	} else if (data.day instanceof Date) {
+		dayKey = formatDateKey(data.day);
+	} else {
+		const date = new Date(data.day);
+		if (!isNaN(date.getTime())) {
+			dayKey = formatDateKey(date);
+		}
+	}
+	
+	// 单个日期选择高亮
+	if (calendarSelectedDate.value === dayKey) {
 		classes.push('is-selected');
 	}
-	if (deadlineCountByDate.value[data.day]) {
+	
+	// 日期范围高亮
+	if (dateRange.value && dateRange.value.length === 2) {
+		const [startDate, endDate] = dateRange.value;
+		if (dayKey >= startDate && dayKey <= endDate) {
+			classes.push('is-in-range');
+			// 如果是范围的边界，添加特殊样式
+			if (dayKey === startDate || dayKey === endDate) {
+				classes.push('is-range-boundary');
+			}
+		}
+	}
+	
+	// 有作业的日期
+	if (allAssignmentsByDate.value[dayKey]) {
 		classes.push('has-deadline');
 	}
+	
 	return classes.join(' ');
 };
 
@@ -933,23 +1483,39 @@ const handleMenuSelect = (index) => {
 		return;
 	}
 	if (index === 'all') {
-		// 跳转到所有作业页面
+		// 跳转到所有作业页面（根据当前学期模式选择路由）
+		if (isHistorySemesterMode.value) {
+			router.push({ name: 'HistorySemesterAllHomeworksView', params: { semester: viewingSemester.value } });
+		} else {
 		router.push({ name: 'AllHomeworksView' });
+		}
 		return;
 	}
 	if (index === 'pending') {
 		// 跳转到待提交作业页面
+		if (isHistorySemesterMode.value) {
+			router.push({ name: 'HistorySemesterPendingHomeworksView', params: { semester: viewingSemester.value } });
+		} else {
 		router.push({ name: 'PendingHomeworksView' });
+		}
 		return;
 	}
 	if (index === 'submitted') {
 		// 跳转到已提交作业页面
+		if (isHistorySemesterMode.value) {
+			router.push({ name: 'HistorySemesterSubmittedHomeworksView', params: { semester: viewingSemester.value } });
+		} else {
 		router.push({ name: 'SubmittedHomeworksView' });
+		}
 		return;
 	}
 	if (index === 'completed') {
 		// 跳转到已完成作业页面
+		if (isHistorySemesterMode.value) {
+			router.push({ name: 'HistorySemesterCompletedHomeworksView', params: { semester: viewingSemester.value } });
+		} else {
 		router.push({ name: 'CompletedHomeworksView' });
+		}
 		return;
 	}
 	if (index.startsWith('course-')) {
@@ -959,21 +1525,46 @@ const handleMenuSelect = (index) => {
 	}
 };
 
-const handleDateSelect = (day) => {
-	// 检查该日期是否有待提交的作业
-	const hasPendingOnDate = deadlineCountByDate.value[day] && deadlineCountByDate.value[day] > 0;
-	
-	if (hasPendingOnDate) {
-		// 如果有待提交的作业，跳转到该日期的待提交作业页面
-		router.push({ name: 'DatePendingHomeworksView', params: { date: day } });
+// 获取指定日期的所有作业（包括已提交的）
+const getAssignmentsForDate = (day) => {
+	// day 可能是日期字符串或 Date 对象，需要转换为格式化的日期键
+	let dayKey = '';
+	if (typeof day === 'string') {
+		dayKey = day;
+	} else if (day instanceof Date) {
+		dayKey = formatDateKey(day);
 	} else {
-		// 如果没有待提交的作业，使用原来的单个日期筛选逻辑
-		if (calendarSelectedDate.value === day) {
-			calendarSelectedDate.value = '';
-		} else {
-			calendarSelectedDate.value = day;
+		// 尝试解析
+		const date = new Date(day);
+		if (!isNaN(date.getTime())) {
+			dayKey = formatDateKey(date);
 		}
 	}
+	return assignments.value.filter((a) => a.deadlineKey === dayKey);
+};
+
+const handleDateSelect = (day) => {
+	// 将 day 转换为日期键格式
+	let dayKey = '';
+	if (typeof day === 'string') {
+		dayKey = day;
+	} else if (day instanceof Date) {
+		dayKey = formatDateKey(day);
+	} else {
+		const date = new Date(day);
+		if (!isNaN(date.getTime())) {
+			dayKey = formatDateKey(date);
+		}
+	}
+	
+	// 检查该日期是否有任何作业（包括已提交的）
+	const assignmentsForDay = getAssignmentsForDate(dayKey);
+	
+	if (assignmentsForDay.length > 0) {
+		// 如果有作业，跳转到该日期的作业页面
+		router.push({ name: 'DatePendingHomeworksView', params: { date: dayKey } });
+		}
+	// 如果没有作业，点击就无事发生（不执行任何操作）
 };
 
 const clearDateFilter = () => {
@@ -1010,12 +1601,19 @@ const getCourseGradient = (code) => {
 	return courseGradients[idx];
 };
 
-// 获取课程的待提交作业数量
+// 获取课程的待提交作业数量（只统计真正未提交的作业）
 const getPendingTasksCount = (courseId) => {
-	return assignments.value.filter(a => 
-		a.course.id === courseId && 
-		(a.status === 'pending' || a.status === 'due-soon' || a.status === 'overdue')
-	).length;
+	const now = new Date();
+	return assignments.value.filter(a => {
+		// 必须是该课程的作业
+		if (a.course.id !== courseId) return false;
+		// 必须没有提交记录
+		if (a.submission) return false;
+		// 必须有截止日期且截止日期在未来（未过期）
+		if (!a.deadlineDate || a.deadlineDate <= now) return false;
+		// 状态必须是未提交或临近截止
+		return a.status === 'pending' || a.status === 'due-soon';
+	}).length;
 };
 
 // 获取课程的教师名称
@@ -1032,6 +1630,29 @@ const goToCourseDetail = (courseId) => {
 	router.push({ name: 'CourseDetail', params: { id: courseId } });
 };
 
+// 跳转到历史学期主页
+const goToHistorySemesterHome = () => {
+	if (!selectedHistorySemester.value) return;
+	// 跳转到历史学期主页
+	router.push({ 
+		name: 'HistorySemesterHome', 
+		params: { semester: selectedHistorySemester.value }
+	});
+	showHistorySemesterDialog.value = false;
+	selectedHistorySemester.value = '';
+};
+
+// 跳转到历史学期课程详情（保留用于对话框中的课程卡片点击）
+const goToHistoryCourseDetail = (course) => {
+	// 跳转到课程详情页面，并传递学期信息
+	router.push({ 
+		name: 'CourseDetail', 
+		params: { id: course.id },
+		query: { semester: course.semester }
+	});
+	showHistorySemesterDialog.value = false;
+};
+
 // 搜索相关逻辑
 const searchResults = computed(() => {
 	if (!searchQuery.value || !searchQuery.value.trim()) {
@@ -1039,7 +1660,7 @@ const searchResults = computed(() => {
 	}
 	
 	const query = searchQuery.value.trim().toLowerCase();
-	return searchSource.value.filter(item => {
+	const allResults = searchSource.value.filter(item => {
 		if (item.type === 'course') {
 			// 匹配课程名称或课程代码
 			return item.title.toLowerCase().includes(query) || 
@@ -1051,6 +1672,10 @@ const searchResults = computed(() => {
 		}
 		return false;
 	});
+	
+	// 限制搜索结果数量，避免渲染过多
+	const maxSearchResults = 50;
+	return allResults.slice(0, maxSearchResults);
 });
 
 const courseResults = computed(() => {
@@ -1126,24 +1751,160 @@ const homeworkStats = computed(() => {
 });
 
 const nextDeadline = computed(() => {
-	const candidates = assignments.value.filter((a) => !['submitted', 'completed'].includes(a.status) && a.deadlineDate && a.deadlineDate > new Date());
+	const now = new Date();
+	// 只筛选：未提交、未完成、有截止日期、截止日期在未来、且没有提交记录
+	const candidates = assignments.value.filter((a) => {
+		// 必须没有提交记录
+		if (a.submission) return false;
+		// 状态必须是未提交或临近截止
+		if (!['pending', 'due-soon'].includes(a.status)) return false;
+		// 必须有截止日期且截止日期在未来
+		if (!a.deadlineDate || a.deadlineDate <= now) return false;
+		return true;
+	});
 	if (!candidates.length) return null;
 	return candidates.sort((a, b) => a.deadlineDate - b.deadlineDate)[0];
 });
 
-const ganttAssignments = computed(() => assignments.value.filter((a) => a.deadlineDate));
+// 甘特图相关状态
+const ganttCourseFilter = ref('all');
+const ganttStatusFilter = ref('all');
+const ganttZoom = ref('all'); // 'week', 'month', 'all'
 
-const timelineBounds = computed(() => {
+// 甘特图只显示未到截止日期的作业
+const ganttAssignments = computed(() => {
+	const now = new Date();
+	return assignments.value.filter((a) => {
+		// 必须有截止日期
+		if (!a.deadlineDate) return false;
+
+		// 确保 deadlineDate 是 Date 对象
+		let deadline = a.deadlineDate;
+		if (!(deadline instanceof Date)) {
+			deadline = new Date(deadline);
+		}
+		
+		// 检查日期是否有效
+		if (isNaN(deadline.getTime())) return false;
+		
+		// 只显示截止日期在未来的作业（比较到毫秒级别）
+		return deadline.getTime() > now.getTime();
+	});
+});
+
+// 根据缩放级别计算时间范围
+const ganttTimeRange = computed(() => {
 	if (!ganttAssignments.value.length) return null;
-	const start = Math.min(...ganttAssignments.value.map((a) => a.startDate?.getTime() || Date.now()));
-	const end = Math.max(...ganttAssignments.value.map((a) => a.deadlineDate?.getTime() || Date.now()));
-	if (start === end) {
-		return {
-			start,
-			end: end + 24 * 60 * 60 * 1000,
-		};
+	
+	const now = new Date();
+	let start, end;
+	
+	if (ganttZoom.value === 'week') {
+		// 显示未来一周
+		start = now;
+		end = new Date(now.getTime() + 7 * 24 * 60 * 60 * 1000);
+	} else if (ganttZoom.value === 'month') {
+		// 显示未来一个月
+		start = now;
+		end = new Date(now.getTime() + 30 * 24 * 60 * 60 * 1000);
+	} else {
+		// 显示全部
+		start = Math.min(...ganttAssignments.value.map((a) => a.startDate?.getTime() || Date.now()));
+		end = Math.max(...ganttAssignments.value.map((a) => a.deadlineDate?.getTime() || Date.now()));
 	}
+	
+	if (start === end) {
+		end = end + 24 * 60 * 60 * 1000;
+	}
+	
 	return { start, end };
+});
+
+const timelineBounds = computed(() => ganttTimeRange.value);
+
+// 筛选后的甘特图作业
+const filteredGanttAssignments = computed(() => {
+	let filtered = ganttAssignments.value;
+	
+	// 按课程筛选
+	if (ganttCourseFilter.value && ganttCourseFilter.value !== 'all') {
+		filtered = filtered.filter(a => String(a.course.id) === String(ganttCourseFilter.value));
+	}
+	
+	// 按状态筛选
+	if (ganttStatusFilter.value && ganttStatusFilter.value !== 'all') {
+		filtered = filtered.filter(a => a.status === ganttStatusFilter.value);
+	}
+	
+	// 按时间范围筛选（如果设置了缩放）
+	if (ganttTimeRange.value) {
+		filtered = filtered.filter(a => {
+			const assignmentEnd = a.deadlineDate?.getTime();
+			const assignmentStart = a.startDate?.getTime();
+			const rangeStart = ganttTimeRange.value.start;
+			const rangeEnd = ganttTimeRange.value.end;
+			
+			// 作业与时间范围有交集
+			return assignmentEnd >= rangeStart && assignmentStart <= rangeEnd;
+		});
+	}
+	
+	return filtered.sort((a, b) => {
+		if (!a.deadlineDate || !b.deadlineDate) return 0;
+		return a.deadlineDate - b.deadlineDate;
+	});
+});
+
+// 时间轴刻度
+const timelineTicks = computed(() => {
+	const bounds = timelineBounds.value;
+	if (!bounds) return [];
+	
+	const ticks = [];
+	const total = bounds.end - bounds.start;
+	const days = Math.ceil(total / (24 * 60 * 60 * 1000));
+	
+	// 根据时间范围决定刻度间隔
+	let interval = 1; // 默认每天一个刻度
+	if (days > 60) {
+		interval = 7; // 超过60天，每周一个刻度
+	} else if (days > 14) {
+		interval = 3; // 超过14天，每3天一个刻度
+	}
+	
+	const startDate = new Date(bounds.start);
+	const endDate = new Date(bounds.end);
+	
+	for (let d = new Date(startDate); d <= endDate; d.setDate(d.getDate() + interval)) {
+		// 确保日期有效
+		if (isNaN(d.getTime())) continue;
+		const position = ((d.getTime() - bounds.start) / total) * 100;
+		if (position >= 0 && position <= 100) {
+			ticks.push({
+				date: d.toISOString(),
+				position,
+				label: formatGanttDate(d),
+			});
+		}
+	}
+	
+	return ticks;
+});
+
+// 今天的位置
+const todayPosition = computed(() => {
+	const bounds = timelineBounds.value;
+	if (!bounds) return 0;
+	const now = new Date().getTime();
+	if (now < bounds.start || now > bounds.end) return -1;
+	return ((now - bounds.start) / (bounds.end - bounds.start)) * 100;
+});
+
+const isTodayInRange = computed(() => {
+	const bounds = timelineBounds.value;
+	if (!bounds) return false;
+	const now = new Date().getTime();
+	return now >= bounds.start && now <= bounds.end;
 });
 
 const getGanttStyle = (assignment) => {
@@ -1162,6 +1923,37 @@ const getGanttStyle = (assignment) => {
 	};
 };
 
+// 格式化甘特图日期
+const formatGanttDate = (date) => {
+	if (!date) return '';
+	const d = date instanceof Date ? date : new Date(date);
+	if (isNaN(d.getTime())) return '';
+	return formatDateUtil(d, 'MM-DD');
+};
+
+// 缩放控制
+const zoomGantt = (zoom) => {
+	ganttZoom.value = zoom;
+};
+
+// 跳转到作业详情
+const goToHomework = (assignment) => {
+	router.push({ name: 'HomeworkView', params: { id: assignment.id } });
+};
+
+// 跳转到所有作业页面（带筛选）
+const goToAllHomeworks = (filter = 'all') => {
+	if (isHistorySemesterMode.value) {
+		router.push({ 
+			name: 'HistorySemesterAllHomeworksView', 
+			params: { semester: viewingSemester.value },
+			query: { filter } 
+		});
+	} else {
+		router.push({ name: 'AllHomeworksView', query: { filter } });
+	}
+};
+
 const ganttLegend = computed(() => [
 	{ status: 'pending', label: '未提交', color: statusMeta('pending').color },
 	{ status: 'due-soon', label: '临近截止', color: statusMeta('due-soon').color },
@@ -1170,25 +1962,118 @@ const ganttLegend = computed(() => [
 	{ status: 'completed', label: '已完成', color: statusMeta('completed').color },
 ]);
 
-const recentSubmissions = computed(() => {
+// 所有有提交记录的作业
+const allSubmissions = computed(() => {
 	return assignments.value
-		.filter((a) => a.submission)
-		.sort((a, b) => (b.submissionDate || 0) - (a.submissionDate || 0))
-		.slice(0, 5);
+		.filter((a) => {
+			// 只统计当前查看学期的作业
+			if (a.course.semester !== viewingSemester.value) return false;
+			return a.submission;
+		})
+		.sort((a, b) => (b.submissionDate || 0) - (a.submissionDate || 0));
+});
+
+// 最近提交的作业（用于时间轴显示，限制数量）
+const recentSubmissions = computed(() => {
+	return allSubmissions.value.slice(0, 10); // 显示最近10条
 });
 
 const onTimeRate = computed(() => {
-	if (!recentSubmissions.value.length) return 0;
-	const onTime = recentSubmissions.value.filter((a) => {
-		if (!a.submissionDate || !a.deadlineDate) return false;
-		return a.submissionDate <= a.deadlineDate;
+	// 计算所有有截止日期的作业（不管是否已提交）（只统计当前查看学期的作业）
+	const allWithDeadline = assignments.value.filter((a) => {
+		// 只统计当前查看学期的作业
+		if (a.course.semester !== viewingSemester.value) return false;
+		// 必须有截止日期且是有效的Date对象
+		if (!a.deadlineDate) return false;
+		const deadline = a.deadlineDate instanceof Date ? a.deadlineDate : new Date(a.deadlineDate);
+		return !isNaN(deadline.getTime());
 	});
-	return Math.round((onTime.length / recentSubmissions.value.length) * 100);
+	
+	if (!allWithDeadline.length) return 0;
+	
+	// 按时提交：提交时间 <= 截止时间
+	const onTime = [];
+	const notOnTime = [];
+	const noSubmission = [];
+	
+	allWithDeadline.forEach((a) => {
+		// 确保截止日期是有效的 Date 对象
+		let deadlineDate = a.deadlineDate;
+		if (!(deadlineDate instanceof Date)) {
+			if (typeof deadlineDate === 'string') {
+				deadlineDate = new Date(deadlineDate.replace(/-/g, '/'));
+			} else {
+				deadlineDate = new Date(deadlineDate);
+			}
+		}
+		
+		if (isNaN(deadlineDate.getTime())) {
+			return; // 跳过无效的截止日期
+		}
+		
+		// 如果没有提交记录，不计入按时提交，但计入分母
+		if (!a.submission || !a.submissionDate) {
+			noSubmission.push({
+				title: a.title,
+				deadline: deadlineDate.toISOString(),
+			});
+			return;
+		}
+		
+		// 确保提交日期是有效的 Date 对象
+		let submissionDate = a.submissionDate;
+		if (!(submissionDate instanceof Date)) {
+			if (typeof submissionDate === 'string') {
+				submissionDate = new Date(submissionDate.replace(/-/g, '/'));
+			} else {
+				submissionDate = new Date(submissionDate);
+			}
+		}
+		
+		// 检查日期是否有效
+		if (isNaN(submissionDate.getTime())) {
+			return; // 跳过无效的提交日期
+		}
+		
+		// 提交时间必须 <= 截止时间（使用时间戳比较）
+		const isOnTime = submissionDate.getTime() <= deadlineDate.getTime();
+		
+		if (isOnTime) {
+			onTime.push({
+				title: a.title,
+				submission: submissionDate.toISOString(),
+				deadline: deadlineDate.toISOString(),
+			});
+		} else {
+			notOnTime.push({
+				title: a.title,
+				submission: submissionDate.toISOString(),
+				deadline: deadlineDate.toISOString(),
+				diffHours: (submissionDate.getTime() - deadlineDate.getTime()) / (1000 * 60 * 60),
+			});
+		}
+	});
+	
+	const rate = allWithDeadline.length > 0 ? Math.round((onTime.length / allWithDeadline.length) * 100) : 0;
+	
+	// 调试信息（始终显示，方便排查问题）
+	console.log('=== 按时提交率计算详情 ===');
+	console.log('总作业数:', assignments.value.length);
+	console.log('有截止日期的作业数:', allWithDeadline.length);
+	console.log('按时提交的作业:', onTime);
+	console.log('未按时提交的作业:', notOnTime);
+	console.log('未提交的作业:', noSubmission);
+	console.log('按时提交数:', onTime.length);
+	console.log('按时提交率:', rate + '%');
+	console.log('计算方式:', `${onTime.length} / ${allWithDeadline.length} = ${(onTime.length / allWithDeadline.length * 100).toFixed(2)}%`);
+	console.log('========================');
+	
+	return rate;
 });
 
 const scoreSegments = computed(() => {
-	// 最近有提交的记录
-	const recent = recentSubmissions.value;
+	// 最近有提交的记录（用于分数统计，使用所有提交）
+	const recent = allSubmissions.value;
 	if (!recent.length) {
 		return { segments: [], total: 0 };
 	}
@@ -1207,10 +2092,17 @@ const scoreSegments = computed(() => {
 	];
 
 	graded.forEach((assignment) => {
-		const score = assignment.submission?.score ?? 0;
-		if (score >= 90) {
+		const rawScore = assignment.submission?.score ?? 0;
+		// 获取作业的满分，默认为100
+		const maxScore = assignment.max_score || assignment.maxScore || 100;
+		
+		// 将分数转换为百分制
+		const scoreInPercent = maxScore > 0 ? (rawScore / maxScore) * 100 : 0;
+		
+		// 根据百分制分数进行分类
+		if (scoreInPercent >= 90) {
 			segments[0].value += 1;
-		} else if (score >= 80) {
+		} else if (scoreInPercent >= 80) {
 			segments[1].value += 1;
 		} else {
 			segments[2].value += 1;
@@ -1241,21 +2133,78 @@ const pieStyle = computed(() => {
 	};
 });
 
-const currentSemester = computed(() => {
-	if (!courses.value.length) return '';
-	const semesterCount = courses.value.reduce((acc, course) => {
+// 可用学期列表（从课程中提取）
+const availableSemesters = computed(() => {
+	const semesters = new Set();
+	courses.value.forEach(course => {
 		if (course.semester) {
-			acc[course.semester] = (acc[course.semester] || 0) + 1;
+			semesters.add(course.semester);
 		}
-		return acc;
-	}, {});
-	const [mostFrequent] = Object.entries(semesterCount).sort((a, b) => b[1] - a[1])[0] || [];
-	return mostFrequent || '';
+	});
+	return Array.from(semesters).sort().reverse(); // 按时间倒序
 });
 
-const goToHomework = (assignment) => {
-	router.push({ name: 'HomeworkView', params: { id: assignment.id } });
-};
+// 当前学期（根据当前时间自动判断，缓存结果避免重复计算）
+const currentSemesterInfo = getCurrentSemester();
+const currentSemester = computed(() => currentSemesterInfo.semester);
+
+// 当前查看的学期（如果是历史学期页面，使用路由参数；否则使用当前学期）
+const viewingSemester = computed(() => {
+  // 检查路由参数中是否有学期信息
+  if (route.name === 'HistorySemesterHome' && route.params.semester) {
+    return route.params.semester;
+		}
+  return currentSemester.value;
+});
+
+// 是否为历史学期模式
+const isHistorySemesterMode = computed(() => {
+  return route.name === 'HistorySemesterHome' && route.params.semester;
+});
+
+// 历史学期列表（去掉当前学期，其余从近到远）
+const historySemesters = computed(() => {
+	// 过滤掉当前学期，确保历史学期不包含当前学期
+	const history = availableSemesters.value.filter(semester => semester !== currentSemester.value);
+	// 调试信息：帮助确认是否有历史学期
+	if (process.env.NODE_ENV === 'development') {
+		console.log('学期信息:', {
+			所有学期: availableSemesters.value,
+			当前学期: currentSemester.value,
+			历史学期: history,
+			历史学期数量: history.length,
+		});
+	}
+	return history;
+});
+
+// 当前学期课程（在历史学期模式下，显示该历史学期的课程）
+const currentSemesterCourses = computed(() => {
+	if (!viewingSemester.value) return courses.value;
+	return courses.value.filter(course => course.semester === viewingSemester.value);
+});
+
+// 历史学期课程（根据选中的历史学期筛选）
+const filteredHistoryCourses = computed(() => {
+	if (!selectedHistorySemester.value) return [];
+	return courses.value.filter(course => course.semester === selectedHistorySemester.value);
+});
+
+// 显示的历史课程列表（根据是否展开）
+const displayedHistoryCourses = computed(() => {
+	if (showAllHistoryCourses.value || filteredHistoryCourses.value.length <= maxHistoryCoursesDisplay.value) {
+		return filteredHistoryCourses.value;
+	}
+	return filteredHistoryCourses.value.slice(0, maxHistoryCoursesDisplay.value);
+});
+
+// 导航栏显示的课程列表（限制数量）
+const displayedNavCourses = computed(() => {
+	if (currentSemesterCourses.value.length <= maxNavCoursesDisplay.value) {
+		return currentSemesterCourses.value;
+	}
+	return currentSemesterCourses.value.slice(0, maxNavCoursesDisplay.value);
+});
 
 // 加入课程
 const handleEnrollCourse = async () => {
@@ -1295,6 +2244,11 @@ const handleCommand = (command) => {
 	} else if (command === 'profile') {
 		profileDrawerVisible.value = true;
 	}
+};
+
+// 助教切换角色
+const handleSwitchRole = () => {
+	userStore.switchTARole();
 };
 
 // 解析邮箱和电话
@@ -1501,11 +2455,34 @@ onMounted(async () => {
 	if (!userStore.token) {
 		userStore.initialize();
 	}
+	// 加载当前用户的个性化设置
+	personalizationStore.loadUserSettings();
 	await fetchData();
 });
+
+// 监听 viewingSemester 变化，当切换到历史学期时重新获取数据
+watch(viewingSemester, async (newSemester, oldSemester) => {
+	// 如果学期发生变化，重新获取数据
+	if (newSemester !== oldSemester) {
+		await fetchData();
+	}
+}, { immediate: false });
+
+// 监听路由变化，当切换到历史学期页面时重新获取数据
+watch(() => route.name, async (newRouteName) => {
+	if (newRouteName === 'HistorySemesterHome' || newRouteName === 'StudentHome') {
+		await fetchData();
+	}
+}, { immediate: false });
 </script>
 
 <style scoped>
+/* 应用个性化卡片样式 */
+:deep(.el-card) {
+	background-color: v-bind('cardStyle.backgroundColor') !important;
+	color: v-bind('cardStyle.color') !important;
+	border-color: v-bind('cardStyle.borderColor') !important;
+}
 .student-home {
 	display: flex;
 	flex-direction: column;
@@ -1542,6 +2519,30 @@ onMounted(async () => {
 
 .section-header {
 	margin-bottom: 20px;
+	margin-left: 4px;
+	padding-left: 12px;
+	display: flex;
+	justify-content: space-between;
+	align-items: center;
+	position: relative;
+}
+
+.section-header-right {
+	display: flex;
+	align-items: center;
+	gap: 12px;
+}
+
+.section-header::before {
+	content: '';
+	position: absolute;
+	left: 0;
+	top: 50%;
+	transform: translateY(-50%);
+	width: 4px;
+	height: 20px;
+	background: linear-gradient(135deg, #409EFF, #67C23A);
+	border-radius: 2px;
 }
 
 .section-title {
@@ -1549,6 +2550,80 @@ onMounted(async () => {
 	font-weight: 600;
 	color: #303133;
 	margin: 0;
+}
+
+.course-count {
+	font-size: 14px;
+	color: #909399;
+	margin-right: 8px;
+	padding: 4px 12px;
+	background-color: #f5f7fa;
+	border-radius: 12px;
+	display: inline-flex;
+	align-items: center;
+}
+
+.history-semester-dialog {
+	padding: 20px 0;
+}
+
+.dialog-tip {
+	margin-bottom: 16px;
+	color: #606266;
+	font-size: 14px;
+}
+
+.history-courses-preview {
+	margin-top: 24px;
+}
+
+.preview-title {
+	margin-bottom: 12px;
+	font-weight: 600;
+	color: #303133;
+}
+
+.history-courses-list {
+	display: flex;
+	flex-direction: column;
+	gap: 12px;
+	max-height: 400px;
+	overflow-y: auto;
+}
+
+.history-course-card {
+	cursor: pointer;
+	transition: transform 0.2s, box-shadow 0.2s;
+}
+
+.history-course-card:hover {
+	transform: translateY(-2px);
+	box-shadow: 0 4px 12px rgba(0, 0, 0, 0.1);
+}
+
+.history-course-info h4 {
+	margin: 0 0 8px 0;
+	font-size: 16px;
+	color: #303133;
+}
+
+.history-course-info .course-code {
+	margin: 8px 0;
+	color: #909399;
+	font-size: 13px;
+}
+
+.history-courses-footer {
+	margin-top: 16px;
+	text-align: center;
+	padding-top: 16px;
+	border-top: 1px solid #ebeef5;
+}
+
+.results-limit-hint {
+	color: #909399;
+	font-size: 12px;
+	margin-left: 8px;
 }
 
 .course-card {
@@ -1817,16 +2892,56 @@ onMounted(async () => {
 	gap: 16px;
 }
 
+.tabs-with-count {
+	display: flex;
+	align-items: center;
+	gap: 16px;
+	flex: 1;
+}
+
+.homework-count {
+	font-size: 14px;
+	color: #909399;
+	margin-left: auto;
+	white-space: nowrap;
+}
+
+.homework-grid-wrapper {
+	width: 100%;
+}
+
 .homework-grid {
 	display: grid;
 	grid-template-columns: repeat(auto-fill, minmax(280px, 1fr));
+	grid-auto-flow: row;
 	gap: 16px;
+	width: 100%;
+	align-items: stretch;
+}
+
+.course-more-actions,
+.homework-more-actions {
+	display: flex;
+	justify-content: center;
+	align-items: center;
+	margin-top: 20px;
+	padding: 16px;
 }
 
 .homework-item {
 	border-radius: 12px;
 	transition: transform 0.2s ease;
 	position: relative;
+	display: flex;
+	flex-direction: column;
+	height: 100%;
+}
+
+.homework-item :deep(.el-card__body) {
+	display: flex;
+	flex-direction: column;
+	flex: 1;
+	padding: 16px;
 }
 
 .homework-item .submit-button {
@@ -1882,13 +2997,15 @@ onMounted(async () => {
 .homework-content {
 	min-height: 48px;
 	color: #606266;
+	flex: 1;
 }
 
 .homework-footer {
 	display: flex;
 	justify-content: space-between;
 	align-items: center;
-	margin-top: 16px;
+	margin-top: auto;
+	padding-top: 16px;
 }
 
 .homework-meta {
@@ -1910,78 +3027,338 @@ onMounted(async () => {
 	gap: 16px;
 }
 
+.gantt-header {
+	display: flex;
+	justify-content: space-between;
+	align-items: center;
+	flex-wrap: wrap;
+	gap: 12px;
+}
+
+.gantt-title-wrapper {
+	display: flex;
+	align-items: center;
+	gap: 8px;
+}
+
+.gantt-controls {
+	display: flex;
+	align-items: center;
+	flex-wrap: wrap;
+	gap: 8px;
+}
+
 .gantt-wrapper {
 	display: flex;
 	flex-direction: column;
-	gap: 12px;
+	gap: 16px;
+}
+
+.gantt-help-icon {
+	margin-left: 8px;
+	color: #909399;
+	cursor: help;
+	font-size: 16px;
+}
+
+.gantt-intro {
+	padding: 10px 16px;
+	background: linear-gradient(135deg, #f0f7ff 0%, #f5f9ff 100%);
+	border-radius: 8px;
+	margin-bottom: 16px;
+	border: 1px solid #e1ecff;
+}
+
+.intro-text {
+	font-size: 13px;
+	color: #606266;
+	line-height: 1.6;
 }
 
 .gantt-legend {
 	display: flex;
+	align-items: center;
 	gap: 12px;
 	flex-wrap: wrap;
 	color: #606266;
+	padding: 12px 0;
+	border-bottom: 2px solid #ebeef5;
+	margin-bottom: 8px;
+}
+
+.legend-title {
+	font-weight: 600;
+	color: #303133;
+	font-size: 14px;
+}
+
+.legend-item {
+	display: flex;
+	align-items: center;
+	gap: 6px;
 }
 
 .gantt-legend .legend-color {
-	width: 12px;
-	height: 12px;
-	border-radius: 2px;
+	width: 16px;
+	height: 16px;
+	border-radius: 4px;
 	display: inline-block;
-	margin-right: 6px;
+	flex-shrink: 0;
+}
+
+.legend-text {
+	font-size: 13px;
+}
+
+/* 时间轴刻度 */
+.gantt-timeline-header {
+	position: relative;
+	height: 60px;
+	margin: 12px 0;
+	border-bottom: 2px solid #e4e7ed;
+	background: #fafbfc;
+	border-radius: 4px;
+	padding: 8px 0;
+}
+
+.timeline-label {
+	position: absolute;
+	right: 8px;
+	bottom: 8px;
+	font-size: 12px;
+	color: #909399;
+	font-weight: 500;
+	padding: 2px 8px;
+	background: rgba(255, 255, 255, 0.9);
+	border-radius: 3px;
+	z-index: 2;
+}
+
+.timeline-today-marker {
+	position: absolute;
+	top: 0;
+	height: 100%;
+	z-index: 15;
+	pointer-events: none;
+}
+
+.today-line {
+	position: absolute;
+	top: 0;
+	bottom: 0;
+	left: 0;
+	width: 2px;
+	background: #f56c6c;
+	box-shadow: 0 0 4px rgba(245, 108, 108, 0.5);
+}
+
+.today-label {
+	position: absolute;
+	top: -20px;
+	left: 50%;
+	transform: translateX(-50%);
+	background: #f56c6c;
+	color: #fff;
+	padding: 2px 8px;
+	border-radius: 4px;
+	font-size: 11px;
+	font-weight: 600;
+	white-space: nowrap;
+}
+
+.timeline-tick {
+	position: absolute;
+	top: 0;
+	height: 100%;
+	display: flex;
+	flex-direction: column;
+	align-items: center;
+}
+
+.tick-line {
+	width: 2px;
+	height: 20px;
+	background: #409eff;
+	margin-bottom: 4px;
+}
+
+.tick-label {
+	font-size: 11px;
+	color: #909399;
+	white-space: nowrap;
+	transform: translateX(-50%);
 }
 
 .gantt-chart {
 	display: flex;
 	flex-direction: column;
-	gap: 12px;
+	gap: 16px;
+	min-height: 200px;
+	padding: 8px 0;
 }
 
 .gantt-row {
 	display: flex;
 	align-items: center;
-	gap: 12px;
+	gap: 16px;
+	padding: 8px 0;
+	cursor: pointer;
+	transition: all 0.2s ease;
+	border-radius: 6px;
+}
+
+.gantt-row:hover {
+	background: #f5f7fa;
+	transform: translateX(4px);
 }
 
 .gantt-label {
-	width: 160px;
-	font-weight: 500;
-	color: #606266;
+	width: 220px;
+	flex-shrink: 0;
+	display: flex;
+	flex-direction: column;
+	gap: 4px;
+	padding-right: 12px;
+}
+
+.gantt-label-title {
+	font-weight: 600;
+	color: #303133;
+	font-size: 14px;
+	overflow: hidden;
+	text-overflow: ellipsis;
+	white-space: nowrap;
+}
+
+.gantt-label-course {
+	font-size: 12px;
+	color: #909399;
+	overflow: hidden;
+	text-overflow: ellipsis;
+	white-space: nowrap;
+}
+
+.gantt-label-deadline {
+	font-size: 11px;
+	color: #C0C4CC;
+	margin-top: 2px;
 }
 
 .gantt-bar-container {
 	flex: 1;
-	height: 12px;
+	height: 32px;
 	background: #f0f2f5;
-	border-radius: 6px;
+	border-radius: 8px;
 	position: relative;
+	overflow: visible;
 }
 
 .gantt-bar {
 	position: absolute;
+	top: 4px;
+	bottom: 4px;
+	border-radius: 6px;
+	cursor: pointer;
+	transition: all 0.3s ease;
+	box-shadow: 0 2px 4px rgba(0, 0, 0, 0.1);
+	overflow: hidden;
+	min-width: 60px;
+}
+
+.gantt-bar:hover {
+	transform: translateY(-2px);
+	box-shadow: 0 4px 8px rgba(0, 0, 0, 0.15);
+	z-index: 10;
+}
+
+.gantt-bar-content {
+	display: flex;
+	flex-direction: column;
+	justify-content: center;
+	align-items: flex-start;
+	padding: 4px 8px;
+	height: 100%;
+	color: #fff;
+	font-size: 11px;
+	line-height: 1.4;
+	overflow: hidden;
+}
+
+.gantt-bar-title {
+	font-weight: 600;
+	overflow: hidden;
+	text-overflow: ellipsis;
+	white-space: nowrap;
+	width: 100%;
+}
+
+.gantt-bar-deadline {
+	font-size: 10px;
+	opacity: 0.9;
+}
+
+/* 今天指示线 */
+.gantt-today-line {
+	position: absolute;
 	top: 0;
 	bottom: 0;
-	border-radius: 6px;
+	width: 2px;
+	background: #f56c6c;
+	z-index: 5;
+	pointer-events: none;
+}
+
+.gantt-today-line::before {
+	content: '';
+	position: absolute;
+	top: -4px;
+	left: -4px;
+	width: 10px;
+	height: 10px;
+	background: #f56c6c;
+	border-radius: 50%;
 }
 
 .gantt-bar.status-pending {
-	background: #909399;
+	background: linear-gradient(135deg, #909399 0%, #a6a9ad 100%);
 }
 
 .gantt-bar.status-due-soon {
-	background: #e6a23c;
+	background: linear-gradient(135deg, #e6a23c 0%, #f0a020 100%);
 }
 
 .gantt-bar.status-overdue {
-	background: #f56c6c;
+	background: linear-gradient(135deg, #f56c6c 0%, #f78989 100%);
 }
 
 .gantt-bar.status-submitted {
-	background: #67c23a;
+	background: linear-gradient(135deg, #67c23a 0%, #85ce61 100%);
 }
 
 .gantt-bar.status-completed {
-	background: #409eff;
+	background: linear-gradient(135deg, #409eff 0%, #66b1ff 100%);
+}
+
+.gantt-footer {
+	margin-top: 12px;
+	padding-top: 12px;
+	border-top: 1px solid #ebeef5;
+	display: flex;
+	justify-content: space-between;
+	align-items: center;
+}
+
+.gantt-stats {
+	font-size: 13px;
+	color: #606266;
+	display: flex;
+	align-items: center;
+	gap: 8px;
+}
+
+.filter-hint {
+	color: #909399;
+	font-size: 12px;
 }
 
 .history-body {
@@ -1993,6 +3370,13 @@ onMounted(async () => {
 .history-stats {
 	display: flex;
 	gap: 16px;
+}
+
+.more-submissions-hint {
+	margin-top: 16px;
+	text-align: center;
+	padding-top: 16px;
+	border-top: 1px solid #ebeef5;
 }
 
 .calendar-card {
@@ -2015,11 +3399,113 @@ onMounted(async () => {
 	padding: 6px;
 	border-radius: 6px;
 	cursor: pointer;
-	transition: background 0.2s ease;
+	transition: background 0.2s ease, color 0.2s ease;
+	min-height: 60px;
+	display: flex;
+	flex-direction: column;
+	justify-content: space-between;
+}
+
+.calendar-date-info {
+	display: flex;
+	flex-direction: column;
+	align-items: flex-start;
+	gap: 2px;
+}
+
+.day-number {
+	font-weight: 500;
+	font-size: 14px;
+}
+
+.month-day {
+	font-size: 11px;
+	color: #909399;
+	opacity: 0.8;
 }
 
 .calendar-cell.has-deadline {
 	background: rgba(64, 158, 255, 0.08);
+}
+
+.calendar-assignments {
+	margin-top: 4px;
+	display: flex;
+	flex-direction: column;
+	gap: 2px;
+	max-height: 80px;
+	overflow-y: auto;
+	overflow-x: hidden;
+	/* 自定义滚动条样式 */
+	scrollbar-width: thin;
+	scrollbar-color: rgba(64, 158, 255, 0.3) transparent;
+}
+
+.calendar-assignments::-webkit-scrollbar {
+	width: 4px;
+}
+
+.calendar-assignments::-webkit-scrollbar-track {
+	background: transparent;
+}
+
+.calendar-assignments::-webkit-scrollbar-thumb {
+	background: rgba(64, 158, 255, 0.3);
+	border-radius: 2px;
+}
+
+.calendar-assignments::-webkit-scrollbar-thumb:hover {
+	background: rgba(64, 158, 255, 0.5);
+}
+
+.calendar-assignment-item {
+	display: flex;
+	align-items: center;
+	justify-content: space-between;
+	padding: 2px 4px;
+	font-size: 10px;
+	border-radius: 3px;
+	background: rgba(64, 158, 255, 0.1);
+	cursor: pointer;
+	transition: background 0.2s;
+}
+
+.calendar-assignment-item:hover {
+	background: rgba(64, 158, 255, 0.2);
+}
+
+.calendar-assignment-item.is-submitted {
+	background: rgba(103, 194, 58, 0.1);
+}
+
+.calendar-assignment-item.is-submitted:hover {
+	background: rgba(103, 194, 58, 0.2);
+}
+
+.assignment-title {
+	flex: 1;
+	overflow: hidden;
+	text-overflow: ellipsis;
+	white-space: nowrap;
+	color: #606266;
+}
+
+.calendar-assignment-item.is-submitted .assignment-title {
+	color: #67C23A;
+}
+
+.assignment-status {
+	color: #67C23A;
+	font-weight: bold;
+	font-size: 12px;
+	margin-left: 4px;
+}
+
+.calendar-assignment-more {
+	font-size: 9px;
+	color: #909399;
+	padding: 2px 4px;
+	text-align: center;
 }
 
 .calendar-cell.is-selected {
@@ -2027,12 +3513,26 @@ onMounted(async () => {
 	color: #ffffff;
 }
 
-.calendar-cell:hover {
+.calendar-cell.is-selected .month-day {
+	color: rgba(255, 255, 255, 0.9);
+}
+
+.calendar-cell.is-in-range {
 	background: rgba(64, 158, 255, 0.15);
 }
 
-.day-number {
-	font-weight: 500;
+.calendar-cell.is-range-boundary {
+	background: #409eff;
+	color: #ffffff;
+	font-weight: 600;
+}
+
+.calendar-cell.is-range-boundary .month-day {
+	color: rgba(255, 255, 255, 0.9);
+}
+
+.calendar-cell:hover {
+	background: rgba(64, 158, 255, 0.2);
 }
 
 .deadline-badge {
@@ -2127,8 +3627,35 @@ onMounted(async () => {
 		grid-template-columns: 1fr;
 	}
 
+	.gantt-header {
+		flex-direction: column;
+		align-items: flex-start;
+	}
+
+	.gantt-controls {
+		width: 100%;
+		flex-wrap: wrap;
+	}
+
 	.gantt-label {
 		width: 120px;
+	}
+
+	.gantt-bar-container {
+		height: 28px;
+	}
+
+	.gantt-bar-content {
+		font-size: 10px;
+		padding: 2px 6px;
+	}
+
+	.gantt-timeline-header {
+		height: 40px;
+	}
+
+	.tick-label {
+		font-size: 10px;
 	}
 
 	.insights-card .insights-content {
@@ -2153,13 +3680,19 @@ onMounted(async () => {
 	position: absolute;
 	top: 100%;
 	left: 50%;
-	transform: translateX(-50%);
+	transform: translateX(-50%) !important;
 	z-index: 1000;
 	margin-top: 8px;
 	width: 100%;
 	max-width: 600px;
 	max-height: 500px;
 	overflow-y: auto;
+	box-shadow: 0 4px 12px rgba(0, 0, 0, 0.15);
+	will-change: auto;
+}
+
+.search-results-card:hover {
+	transform: translateX(-50%) !important;
 	box-shadow: 0 4px 12px rgba(0, 0, 0, 0.15);
 }
 
@@ -2198,10 +3731,12 @@ onMounted(async () => {
 	border-radius: 6px;
 	cursor: pointer;
 	transition: background-color 0.2s;
+	position: relative;
 }
 
 .search-result-item:hover {
 	background-color: #f5f7fa;
+	transform: none;
 }
 
 .result-icon {

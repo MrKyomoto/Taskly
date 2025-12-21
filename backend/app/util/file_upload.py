@@ -112,3 +112,32 @@ def upload_image(
 
     # 返回图片URL
     return get_file_url(relative_path)
+
+
+def upload_file(
+        file,
+        course_id: int,
+        course_hw_no: int,
+        resource_type: str,
+        student_id: int = None,
+):
+    """
+    上传文件（支持图片和PDF）并返回可访问的URL
+    :param file: 上传的文件对象
+    :param course_id: 课程ID
+    :param course_hw_no: 作业ID
+    :param resource_type: "post" 或 "submit"
+    :param student_id: 学生ID（submit时必填）
+    :return: 文件的可访问URL或错误响应
+    """
+    if file.filename == '':
+        return jsonify({"error": "未选择文件"}), 400
+
+    # 调用工具函数保存到用户专属目录
+    relative_path, error_resp, status_code = save_uploaded_file(
+        file, course_id=course_id, course_hw_no=course_hw_no, resource_type=resource_type, student_id=student_id)
+    if error_resp:
+        return error_resp, status_code
+
+    # 返回文件URL
+    return get_file_url(relative_path)

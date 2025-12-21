@@ -9,6 +9,9 @@
             <span class="header-current-student">
               当前学生：{{ currentSubmission?.student_name || '未选择' }}
             </span>
+            <el-tag v-if="isReadOnly" type="info" size="small" style="margin-left: 12px;">
+              查看模式（成绩已发布）
+            </el-tag>
           </div>
           <div class="header-right">
             <span class="header-progress">
@@ -39,7 +42,7 @@
               <el-radio-button label="graded">已批改</el-radio-button>
               <el-radio-button label="unsubmitted">未提交</el-radio-button>
             </el-radio-group>
-            <div v-if="filterType === 'unsubmitted' && unsubmittedStudents.length > 0" class="batch-action">
+            <div v-if="filterType === 'unsubmitted' && unsubmittedStudents.length > 0 && !isReadOnly" class="batch-action">
               <el-button type="danger" size="small" @click="handleBatchZeroScore" :loading="batchGrading">
                 一键0分
               </el-button>
@@ -85,24 +88,51 @@
               </div>
             </el-card>
   
-            <!-- 图片批注舞台 -->
+            <!-- 文件批注舞台 - 支持多张图片、多个PDF，以及图片和PDF混合提交 -->
             <div class="image-stage" v-if="processedImageUrls.length > 0">
               <transition-group name="fade-in" tag="div">
                 <div
                   v-for="(imageUrl, index) in processedImageUrls"
-                  :key="`image-${index}-${imageUrl}`"
+                  :key="`file-${index}-${imageUrl}`"
                   class="image-stage-item"
                 >
+                  <!-- 文件类型标签 -->
+                  <div class="file-header">
+                    <el-tag 
+                      :type="isPDF(imageUrl) ? 'danger' : 'primary'" 
+                      size="small"
+                      effect="plain"
+                    >
+                      {{ isPDF(imageUrl) ? 'PDF文档' : '图片' }} {{ index + 1 }} / {{ processedImageUrls.length }}
+                    </el-tag>
+                  </div>
                   <div class="image-stage-inner">
+                    <!-- PDF文件显示（支持批注） -->
+                    <template v-if="isPDF(imageUrl)">
+                      <PDFAnnotator
+                        :pdf-url="getImageUrl(imageUrl, true)"
+                        :model-value="annotationData[imageUrl] || { version: 2, pages: {} }"
+                        :readonly="isReadOnly"
+                        @update:model-value="(value) => {
+                          if (!isReadOnly && (!annotationData[imageUrl] || JSON.stringify(annotationData[imageUrl]) !== JSON.stringify(value))) {
+                            annotationData[imageUrl] = value;
+                          }
+                        }"
+                      />
+                    </template>
+                    <!-- 图片文件显示（支持批注） -->
+                    <template v-else>
                     <ImageAnnotator
                       :image-url="getImageUrl(imageUrl, true)"
                       :model-value="annotationData[imageUrl] || { version: 1, elements: [] }"
+                      :readonly="isReadOnly"
                       @update:model-value="(value) => {
-                        if (!annotationData[imageUrl] || JSON.stringify(annotationData[imageUrl]) !== JSON.stringify(value)) {
+                        if (!isReadOnly && (!annotationData[imageUrl] || JSON.stringify(annotationData[imageUrl]) !== JSON.stringify(value))) {
                           annotationData[imageUrl] = value;
                         }
                       }"
                     />
+                    </template>
                   </div>
                 </div>
               </transition-group>
@@ -142,6 +172,7 @@
                     :step="0.5"
                     :precision="2"
                     style="width: 100%"
+                    :disabled="isReadOnly"
                     @keyup.enter="handleSaveAndNext"
                   />
                   <div class="form-tip" v-if="homeworkInfo?.max_score">
@@ -154,10 +185,11 @@
                     type="textarea"
                     :rows="6"
                     placeholder="请输入评语..."
+                    :disabled="isReadOnly"
                     @keydown.enter.ctrl="handleSaveAndNext"
                   />
                 </el-form-item>
-                <el-form-item>
+                <el-form-item v-if="!isReadOnly">
                   <el-button 
                     type="success" 
                     :icon="MagicStick"
@@ -172,7 +204,7 @@
             </el-card>
   
             <!-- 操作按钮 -->
-            <div class="action-buttons">
+            <div class="action-buttons" v-if="!isReadOnly">
               <el-button 
                 type="default" 
                 @click="handleSaveOnly"
@@ -188,6 +220,17 @@
                 保存并批改下一个
               </el-button>
               <div class="shortcut-hint">提示：在评分框或空白处按 Enter 键快速提交</div>
+            </div>
+            <div v-else class="readonly-notice">
+              <el-alert
+                type="info"
+                :closable="false"
+                show-icon
+              >
+                <template #title>
+                  <span>成绩已发布，当前为查看模式，无法修改批改内容</span>
+                </template>
+              </el-alert>
             </div>
 
             <!-- 成绩统计（仅当本次作业已全部批改完成时显示） -->
@@ -208,7 +251,7 @@
                 <div>平均分：<strong>{{ scoreStats.avg }}</strong></div>
                 <div>参与人数：<strong>{{ scoreStats.total }}</strong></div>
               </div>
-              <div class="stats-chart">
+              <div class="stats-chart" v-if="scoreStats && scoreStats.buckets && scoreStats.buckets.length > 0">
                 <div
                   v-for="bucket in scoreStats.buckets"
                   :key="bucket.label"
@@ -220,13 +263,16 @@
                   <div
                     class="stats-bar"
                     :style="{
-                      height: scoreStats.maxCount
-                        ? (bucket.count / scoreStats.maxCount) * 80 + 10 + '%'
-                        : '0%'
+                      height: scoreStats.maxCount > 0
+                        ? Math.max((bucket.count / scoreStats.maxCount) * 80, bucket.count > 0 ? 10 : 0) + '%'
+                        : (bucket.count > 0 ? '10%' : '0%')
                     }"
                   ></div>
                   <div class="stats-bar-label">{{ bucket.label }}</div>
                 </div>
+              </div>
+              <div v-else class="stats-chart-empty">
+                <el-empty description="暂无成绩数据" :image-size="60" />
               </div>
             </el-card>
           </div>
@@ -245,7 +291,9 @@
   import { fetchStudentSubmissions, gradeSubmission, gradeUnsubmittedStudent, fetchCourseHomeworks } from '@/api/teacher';
   import { generateAIFeedback } from '@/api/ai';
   import ImageAnnotator from '@/components/ImageAnnotator.vue';
+  import PDFAnnotator from '@/components/PDFAnnotator.vue';
   import { getImageUrl, parseImageUrls } from '@/utils/image';
+import { logger } from '@/utils/logger';
   
   const router = useRouter();
   const route = useRoute();
@@ -273,8 +321,17 @@
   const gradedCount = computed(() => submissions.value.filter(s => s.is_graded).length);
   const totalCount = computed(() => submissions.value.length);
   
+  // 是否只读模式（成绩已发布时只读）
+  const isReadOnly = computed(() => {
+    return homeworkInfo.value?.grades_published === true;
+  });
+  
   // AI生成评语
   const handleAIGenerate = async () => {
+    if (isReadOnly.value) {
+      ElMessage.warning('成绩已发布，无法修改');
+      return;
+    }
     if (!currentSubmission.value) {
       ElMessage.warning('请先选择学生');
       return;
@@ -301,7 +358,7 @@
         ElMessage.warning('AI评语生成失败，请重试');
       }
     } catch (error) {
-      console.error('AI生成评语失败:', error);
+      logger.error('AI生成评语失败:', error);
       ElMessage.error(error?.response?.data?.error || 'AI评语生成失败，请重试');
     } finally {
       aiGenerating.value = false;
@@ -371,9 +428,9 @@
   const scoreStats = computed(() => {
     if (!submissions.value.length) return null;
 
-    // 只统计已提交且有评分的记录
+    // 统计所有有评分的记录（包括未提交但被打0分的学生）
     const scores = submissions.value
-      .filter(s => s.has_submitted && s.grading && typeof s.grading.score === 'number')
+      .filter(s => s.is_graded && s.grading && typeof s.grading.score === 'number')
       .map(s => s.grading.score);
 
     if (!scores.length) return null;
@@ -477,6 +534,13 @@
     return result;
   });
 
+  // 判断文件是否为PDF
+  const isPDF = (url) => {
+    if (!url) return false;
+    const urlStr = typeof url === 'string' ? url : String(url);
+    return urlStr.toLowerCase().endsWith('.pdf') || urlStr.toLowerCase().includes('.pdf');
+  };
+
   const filteredSubmissions = computed(() => {
     let result = submissions.value;
     
@@ -519,10 +583,10 @@
   // 监听批注数据变化（使用 flush: 'post' 避免递归更新）
   // 监听批注数据变化（使用 flush: 'post' 和 nextTick 避免递归更新）
   watch(annotationData, () => {
-    if (isInitializing.value) return;
+    if (isInitializing.value || isReadOnly.value) return;
     // 使用 nextTick 延迟更新，避免在更新过程中触发新的更新
     nextTick(() => {
-      if (!isInitializing.value) {
+      if (!isInitializing.value && !isReadOnly.value) {
         hasUnsavedChanges.value = true;
       }
     });
@@ -530,7 +594,7 @@
   
   // 监听评分表单变化
   watch(gradingForm, () => {
-    if (isInitializing.value) return;
+    if (isInitializing.value || isReadOnly.value) return;
     hasUnsavedChanges.value = true;
   }, { deep: true });
   
@@ -682,16 +746,38 @@
 
       // 加载批注数据
       if (submission.grading?.annotation_data && processedUrls.length > 0) {
-        processedUrls.forEach((url, index) => {
-          // 假设 annotation_data 是一个数组，每个元素对应一张图片
           const annotations = submission.grading.annotation_data;
-          if (Array.isArray(annotations) && annotations[index]) {
-            annotationData.value[url] = annotations[index];
-          } else if (annotations && index === 0) {
-            // 如果只有一个批注对象，应用到第一张图片
-            annotationData.value[url] = annotations;
+        
+        // 如果 annotation_data 是数组，通过 image_url 匹配每个文件的批注
+        if (Array.isArray(annotations)) {
+          processedUrls.forEach((url) => {
+            // 查找匹配的批注（通过 image_url 字段）
+            const matchedAnnotation = annotations.find(ann => {
+              if (!ann || typeof ann !== 'object') return false;
+              const annUrl = ann.image_url || ann.url || String(ann);
+              // 标准化URL进行比较（去掉可能的查询参数）
+              const normalizeUrl = (u) => {
+                if (!u) return '';
+                const urlStr = String(u);
+                const urlObj = new URL(urlStr, window.location.origin);
+                return urlObj.pathname;
+              };
+              return normalizeUrl(annUrl) === normalizeUrl(url) || annUrl === url;
+            });
+            
+            if (matchedAnnotation) {
+              // 移除 image_url 字段，只保留批注数据
+              const { image_url, url: _, ...annotationDataOnly } = matchedAnnotation;
+              annotationData.value[url] = annotationDataOnly;
+            }
+          });
+        } else if (annotations && typeof annotations === 'object') {
+          // 如果只有一个批注对象（旧格式兼容），应用到第一张图片
+          const { image_url, url: _, ...annotationDataOnly } = annotations;
+          if (processedUrls.length > 0) {
+            annotationData.value[processedUrls[0]] = annotationDataOnly;
           }
-        });
+        }
       }
     } else {
       gradingForm.value = {
@@ -731,16 +817,28 @@
   
   // 仅保存
   const handleSaveOnly = async () => {
+    if (isReadOnly.value) {
+      ElMessage.warning('成绩已发布，无法修改');
+      return;
+    }
     await saveGrading(false);
   };
   
   // 保存并下一个
   const handleSaveAndNext = async () => {
+    if (isReadOnly.value) {
+      ElMessage.warning('成绩已发布，无法修改');
+      return;
+    }
     await saveGrading(true);
   };
   
   // 一键0分（批量批改未提交学生）
   const handleBatchZeroScore = async () => {
+    if (isReadOnly.value) {
+      ElMessage.warning('成绩已发布，无法修改');
+      return;
+    }
     if (unsubmittedStudents.value.length === 0) {
       ElMessage.warning('没有未提交的学生');
       return;
@@ -778,7 +876,7 @@
           );
           successCount++;
         } catch (error) {
-          console.error(`为学生 ${student.student_name} 打0分失败:`, error);
+          logger.error(`为学生 ${student.student_name} 打0分失败:`, error);
           failCount++;
         }
       }
@@ -799,6 +897,10 @@
   
   // 保存批改
   const saveGrading = async (goToNext = false) => {
+    if (isReadOnly.value) {
+      ElMessage.warning('成绩已发布，无法修改');
+      return;
+    }
     if (!currentSubmission.value) return;
     
     // 如果是未提交的学生，使用 grade_unsubmitted_student API
@@ -877,17 +979,30 @@
         return String(img);
       });
 
-      // 准备批注数据（将所有图片的批注合并为一个数组）
-      // 只包含有实际批注的图片（elements不为空）
-      const annotations = processedUrls.map((url, index) => {
+      // 准备批注数据（将所有图片和PDF的批注合并为一个数组）
+      // 每个文件的批注都包含其URL，以便后续正确匹配
+      // 支持多张图片、多个PDF，以及图片和PDF混合提交
+      const annotations = processedUrls.map((url) => {
         const annotation = annotationData.value[url] || { version: 1, elements: [] };
+        // 保存完整的批注数据，包括 image_url 用于匹配
         return {
           ...annotation,
-          image_url: url,  // 保存图片URL以便后续显示
+          image_url: url,  // 保存文件URL以便后续正确匹配（支持图片和PDF）
         };
       }).filter(annotation => {
-        // 只保留有实际批注的（elements不为空）
-        return annotation.elements && annotation.elements.length > 0;
+        // 检查是否有实际批注
+        // 支持旧格式：{ version: 1, elements: [] }
+        // 支持新格式：{ version: 2, pages: { 1: [], 2: [] } }
+        if (annotation.version === 2 && annotation.pages) {
+          // 新格式：检查是否有任何页面有批注
+          return Object.values(annotation.pages).some(pageElements => 
+            Array.isArray(pageElements) && pageElements.length > 0
+          );
+        } else if (annotation.elements) {
+          // 旧格式：检查 elements 数组
+          return Array.isArray(annotation.elements) && annotation.elements.length > 0;
+        }
+        return false;
       });
       
       await gradeSubmission(currentSubmission.value.id, {
@@ -948,28 +1063,37 @@
   
   // 返回
   const goBack = () => {
+    // 使用 router.back() 返回到上一个页面
+    // 如果浏览器历史记录中没有上一个页面，则返回到课程详情页
+    if (window.history.length > 1) {
+      router.back();
+    } else {
     router.push({ 
       name: 'TeacherCourseDetail', 
       params: { id: courseId.value } 
     });
+    }
   };
   </script>
   
   <style scoped>
   .grading-view {
     height: 100vh;
-    background: #0f172a;
+    width: 100vw;
+    background: #f5f7fa;
     display: flex;
     flex-direction: column;
+    overflow: hidden;
   }
   
   .grading-header {
-    background: #1e293b;
-    border-bottom: 1px solid rgba(148, 163, 184, 0.4);
+    background: #ffffff;
+    border-bottom: 1px solid #e4e7ed;
     padding: 0 24px;
     height: 50px;
     display: flex;
     align-items: center;
+    flex-shrink: 0;
   }
   
   .grading-header-content {
@@ -980,32 +1104,33 @@
   }
   
   .header-back-btn {
-    color: #e5e7eb;
+    color: #606266;
   }
   
   .header-back-btn:hover {
-    color: #ffffff;
+    color: #409EFF;
     background-color: transparent;
   }
   
   .header-current-student {
-    color: #e5e7eb;
+    color: #303133;
     font-size: 14px;
+    font-weight: 500;
   }
   
   .header-right {
     font-size: 14px;
-    color: #e5e7eb;
+    color: #606266;
   }
   
   .grading-container {
     flex: 1;
-    max-width: 1400px;
-    margin: 0 auto;
-    padding: 12px 24px 20px;
+    width: 100%;
+    padding: 0;
     box-sizing: border-box;
     background: #f5f7fa;
-    border-radius: 16px 16px 0 0;
+    display: flex;
+    overflow: hidden;
   }
   
   .student-list-panel {
@@ -1013,8 +1138,10 @@
     border-right: 1px solid #e4e7ed;
     display: flex;
     flex-direction: column;
-    border-radius: 12px 0 0 12px;
-    box-shadow: 2px 0 4px rgba(15, 23, 42, 0.04);
+    flex-shrink: 0;
+    width: 240px;
+    height: 100%;
+    overflow: hidden;
   }
   
   .filter-section {
@@ -1037,22 +1164,27 @@
     padding: 12px;
     margin-bottom: 8px;
     border: 1px solid #ebeef5;
-    border-radius: 4px;
+    border-radius: 8px;
     cursor: pointer;
-    transition: all 0.2s;
+    transition: all 0.3s cubic-bezier(0.4, 0, 0.2, 1);
     display: flex;
     justify-content: space-between;
     align-items: center;
+    background: #fff;
   }
   
   .student-item:hover {
     background: #f5f7fa;
     border-color: #409eff;
+    transform: translateX(4px);
+    box-shadow: 0 2px 8px rgba(64, 158, 255, 0.2);
   }
   
   .student-item.active {
-    background: #ecf5ff;
+    background: linear-gradient(135deg, #ecf5ff 0%, #d9ecff 100%);
     border-color: #409eff;
+    box-shadow: 0 2px 12px rgba(64, 158, 255, 0.3);
+    font-weight: 500;
   }
   
   .student-info {
@@ -1072,20 +1204,29 @@
   }
   
   .content-panel {
-    background: #0f172a;
+    background: #f5f7fa;
     overflow-y: auto;
     padding: 20px;
-    border-radius: 12px;
+    flex: 1;
+    min-width: 0;
+    height: 100%;
   }
   
   .submission-content {
-    max-width: 1200px;
-    margin: 0 auto;
+    width: 100%;
   }
   
   .text-content-card,
   .image-annotator-card {
     margin-bottom: 20px;
+    transition: all 0.3s ease;
+    border-radius: 12px;
+  }
+  
+  .text-content-card:hover,
+  .image-annotator-card:hover {
+    box-shadow: 0 4px 20px rgba(0, 0, 0, 0.08);
+    transform: translateY(-2px);
   }
   
   .card-header {
@@ -1100,6 +1241,10 @@
     color: #606266;
     white-space: pre-wrap;
     word-break: break-word;
+    padding: 16px;
+    background: #fafafa;
+    border-radius: 8px;
+    border: 1px solid #e4e7ed;
   }
   
   .text-content-empty {
@@ -1137,18 +1282,69 @@
     display: flex;
     flex-direction: column;
     padding: 20px;
-    border-radius: 0 12px 12px 0;
-    box-shadow: -2px 0 4px rgba(15, 23, 42, 0.04);
+    flex-shrink: 0;
+    width: 300px;
+    height: 100%;
+    overflow-y: auto;
   }
   
   .grading-content {
     display: flex;
     flex-direction: column;
     gap: 16px;
+    animation: fadeIn 0.3s ease-in;
+  }
+  
+  @keyframes fadeIn {
+    from {
+      opacity: 0;
+      transform: translateX(10px);
+    }
+    to {
+      opacity: 1;
+      transform: translateX(0);
+    }
+  }
+  
+  .student-info-card,
+  .grading-form-card {
+    transition: all 0.3s ease;
+    border-radius: 12px;
+  }
+  
+  .student-info-card:hover,
+  .grading-form-card:hover {
+    box-shadow: 0 4px 20px rgba(0, 0, 0, 0.08);
   }
   
   .student-info-card {
     margin-bottom: 0;
+  }
+  
+  .student-basic-info {
+    text-align: center;
+    padding: 8px 0;
+  }
+  
+  .student-name-large {
+    font-size: 18px;
+    font-weight: 600;
+    color: #303133;
+    margin-bottom: 8px;
+  }
+  
+  .student-no-small {
+    font-size: 13px;
+    color: #909399;
+    margin-bottom: 8px;
+  }
+  
+  .grader-info {
+    font-size: 12px;
+    color: #909399;
+    margin-top: 8px;
+    padding-top: 8px;
+    border-top: 1px solid #ebeef5;
   }
   
   .student-basic-info {
@@ -1261,6 +1457,64 @@
     color: #909399;
     text-align: center;
     word-break: keep-all;
+  }
+
+  .stats-chart-empty {
+    padding: 20px 0;
+    text-align: center;
+  }
+
+  .image-stage {
+    margin-bottom: 20px;
+    background: #f5f7fa;
+  }
+
+  .image-stage-item {
+    margin-bottom: 20px;
+  }
+
+  .file-header {
+    margin-bottom: 8px;
+    display: flex;
+    align-items: center;
+  }
+
+  .image-stage-inner {
+    background: #fff;
+    border-radius: 8px;
+    overflow: hidden;
+    box-shadow: 0 2px 8px rgba(0, 0, 0, 0.1);
+    min-height: 400px;
+  }
+
+  .pdf-viewer-wrapper {
+    width: 100%;
+    min-height: 600px;
+    display: flex;
+    flex-direction: column;
+    background: #f5f7fa;
+  }
+
+  .pdf-viewer {
+    width: 100%;
+    flex: 1;
+    min-height: 600px;
+    border: none;
+  }
+
+  .pdf-download {
+    padding: 12px;
+    background: #fff;
+    border-top: 1px solid #ebeef5;
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+  }
+
+  .pdf-tip {
+    font-size: 12px;
+    color: #909399;
+    margin-left: 12px;
   }
   </style>
   

@@ -3,7 +3,7 @@
     <el-header class="header">
       <div class="header-content">
         <el-button text @click="goBack" :icon="ArrowLeft">返回</el-button>
-        <h1 class="header-title">{{ selectedDate }} 待提交作业</h1>
+        <h1 class="header-title">{{ selectedDate }} 的作业</h1>
         <div></div>
       </div>
     </el-header>
@@ -15,7 +15,7 @@
         <el-card class="homeworks-card" shadow="never">
           <template #header>
             <div class="card-header">
-              <span class="card-title">{{ selectedDate }} 待提交作业</span>
+              <span class="card-title">{{ selectedDate }} 的作业</span>
               <span class="card-count">共 {{ filteredHomeworks.length }} 项</span>
             </div>
           </template>
@@ -31,7 +31,9 @@
             <el-table-column prop="title" label="作业标题" min-width="200" />
             <el-table-column label="状态" width="120">
               <template #default="{ row }">
-                <el-tag type="info" effect="plain">待提交</el-tag>
+                <el-tag :type="getStatusTag(row).type" effect="plain">
+                  {{ getStatusTag(row).label }}
+                </el-tag>
               </template>
             </el-table-column>
             <el-table-column label="截止时间" width="180">
@@ -71,6 +73,7 @@ import { ElMessage } from 'element-plus';
 import { ArrowLeft } from '@element-plus/icons-vue';
 import { fetchStudentCourses, fetchCourseHomeworks } from '@/api/student';
 import { useUserStore } from '@/store/user';
+import { formatDateTime as formatDateUtil } from '@/utils/date-formatter';
 
 const router = useRouter();
 const route = useRoute();
@@ -81,13 +84,9 @@ const courses = ref([]);
 const homeworks = ref([]);
 const selectedDate = ref('');
 
-// 筛选后的作业列表（只显示未提交且截止日期为选中日期的作业）
+// 筛选后的作业列表（显示所有截止日期为选中日期的作业，包括已提交的）
 const filteredHomeworks = computed(() => {
-  const now = new Date();
   return homeworks.value.filter((hw) => {
-    // 只显示未提交的作业
-    if (hw.submission) return false;
-    
     // 检查截止日期是否匹配
     if (!hw.deadline) return false;
     const deadlineDate = new Date(hw.deadline);
@@ -115,7 +114,13 @@ const formatDateKey = (date) => {
 
 // 返回上一页
 const goBack = () => {
-  router.push({ name: 'StudentHome' });
+  // 使用 router.back() 返回到上一个页面
+  // 如果浏览器历史记录中没有上一个页面，则返回到主页
+  if (window.history.length > 1) {
+    router.back();
+  } else {
+    router.push({ name: 'StudentHome' });
+  }
 };
 
 // 跳转到作业详情
@@ -130,15 +135,43 @@ const getRowClassName = ({ row }) => {
 
 // 格式化日期时间
 const formatDateTime = (dateString) => {
-  if (!dateString) return '未设置';
-  const date = new Date(dateString);
-  return date.toLocaleString('zh-CN', {
-    year: 'numeric',
-    month: '2-digit',
-    day: '2-digit',
-    hour: '2-digit',
-    minute: '2-digit',
-  });
+  return formatDateUtil(dateString, 'YYYY-MM-DD HH:mm');
+};
+
+// 获取作业状态标签
+const getStatusTag = (homework) => {
+  const now = new Date();
+  const deadline = homework.deadline ? new Date(homework.deadline) : null;
+  const submission = homework.submission;
+
+  if (submission) {
+    if (submission.is_graded) {
+      return { type: 'success', label: '已完成' };
+    } else {
+      // 检查是否在ddl前提交
+      const submissionTime = submission.submit_time ? new Date(submission.submit_time) : null;
+      const submittedBeforeDeadline = submissionTime && deadline && submissionTime <= deadline;
+      if (submittedBeforeDeadline) {
+        return { type: 'success', label: '已提交' };
+      } else {
+        return { type: 'danger', label: '已逾期' };
+      }
+    }
+  }
+
+  // 没有提交记录
+  if (deadline && deadline < now) {
+    return { type: 'danger', label: '已逾期' };
+  }
+  if (!deadline) {
+    return { type: 'info', label: '未提交' };
+  }
+  const diff = deadline - now;
+  const hours = diff / (1000 * 60 * 60);
+  if (hours <= 48 && hours > 0) {
+    return { type: 'warning', label: '临近截止' };
+  }
+  return { type: 'info', label: '未提交' };
 };
 
 // 获取数据
@@ -169,7 +202,7 @@ const fetchData = async () => {
           course_name: course.course_name,
         }));
       } catch (error) {
-        console.error(`获取课程 ${course.id} 的作业失败:`, error);
+        // 静默处理单个课程获取失败，不影响其他课程
         return [];
       }
     });

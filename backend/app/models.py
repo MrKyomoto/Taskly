@@ -17,6 +17,7 @@ class CourseStatus(enum.Enum):
     pending = 'pending'
     approved = 'approved'
     rejected = 'rejected'
+    closed = 'closed'
 
 
 class HomeworkType(enum.Enum):
@@ -138,6 +139,19 @@ class StaffCourseRelation(db.Model):
 
     __table_args__ = (db.UniqueConstraint(
         'staff_id', 'course_id', name='unique_staff_course'),)
+
+# 学生-课程助教关联表（学生可以作为助教）
+class StudentTARelation(db.Model):
+    id = db.Column(db.Integer, primary_key=True)
+    student_id = db.Column(db.Integer, db.ForeignKey(
+        'student.id', ondelete='CASCADE'), nullable=False)
+    course_id = db.Column(db.Integer, db.ForeignKey(
+        'course.id', ondelete='CASCADE'), nullable=False)
+    role = db.Column(db.String(20), default='助教', nullable=False)  # 默认为"助教"
+    create_time = db.Column(db.DateTime, default=datetime.utcnow)
+
+    __table_args__ = (db.UniqueConstraint(
+        'student_id', 'course_id', name='unique_student_ta_course'),)
 
 # 作业表
 

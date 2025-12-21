@@ -25,6 +25,10 @@ def parse_identity(identity_str, expected_role=None):
                 # staff 表示支持 teacher 和 ta
                 if role not in ["teacher", "ta"]:
                     return None, jsonify({"error": "仅教师或助教可访问"}), 403
+            elif expected_role == "student_or_ta":
+                # student_or_ta 表示支持 student 和 ta（助教也是学生）
+                if role not in ["student", "ta"]:
+                    return None, jsonify({"error": "仅学生或助教可访问"}), 403
             elif role != expected_role:
                 return None, jsonify({"error": f"仅{expected_role}可访问"}), 403
 

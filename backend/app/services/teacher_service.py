@@ -6,6 +6,7 @@ from app.models import (
     Staff,
     Student,
     StudentCourseRelation,
+    StudentTARelation,
     Course,
     StaffCourseRelation,
     Homework,
@@ -190,42 +191,74 @@ def update_teacher_password(teacher_id, old_password, new_password):
         return False, f"密码更新失败：{str(e)}"
 
 
-def get_teacher_courses(teacher_id):
+def get_teacher_courses(user_id, role="teacher"):
     """获取教师或助教负责的课程"""
     try:
-        teacher = Staff.query.filter_by(id=teacher_id).first()
-
-        if not teacher:
-            return False, "教师不存在"
-
-        # 查询教师或助教关联的课程（不限制角色）
-        courses = db.session.query(
-            Course, StaffCourseRelation.role
-        ).join(
-            StaffCourseRelation,
-            Course.id == StaffCourseRelation.course_id
-        ).filter(
-            StaffCourseRelation.staff_id == teacher_id
-        ).all()
-
         course_list = []
-        for course, role in courses:
-            # 统计已选人数
-            student_count = StudentCourseRelation.query.filter_by(
-                course_id=course.id
-            ).count()
+        
+        if role == "ta":
+            # 助教：通过 StudentTARelation 获取课程
+            student = Student.query.get(user_id)
+            if not student:
+                return False, "学生不存在"
             
-            course_list.append({
-                "id": course.id,
-                "course_code": course.course_code,
-                "course_name": course.course_name,
-                "description": course.description,
-                "semester": course.semester,
-                "status": course.status.value,
-                "role": role,  # 授课角色（如"主讲教师"）
-                "student_count": student_count,  # 已选人数
-                "create_time": course.create_time.isoformat()
-            })
+            # 查询该学生作为助教的课程
+            ta_relations = StudentTARelation.query.filter_by(
+                student_id=user_id
+            ).all()
+            
+            for relation in ta_relations:
+                course = Course.query.get(relation.course_id)
+                if course:
+                    # 统计已选人数
+                    student_count = StudentCourseRelation.query.filter_by(
+                        course_id=course.id
+                    ).count()
+                    
+                    course_list.append({
+                        "id": course.id,
+                        "course_code": course.course_code,
+                        "course_name": course.course_name,
+                        "description": course.description,
+                        "semester": course.semester,
+                        "status": course.status.value,
+                        "role": relation.role,  # 助教角色
+                        "student_count": student_count,  # 已选人数
+                        "create_time": course.create_time.isoformat()
+                    })
+        else:
+            # 教师：通过 StaffCourseRelation 获取课程
+            teacher = Staff.query.filter_by(id=user_id).first()
+            if not teacher:
+                return False, "教师不存在"
+
+            # 查询教师或助教关联的课程（不限制角色）
+            courses = db.session.query(
+                Course, StaffCourseRelation.role
+            ).join(
+                StaffCourseRelation,
+                Course.id == StaffCourseRelation.course_id
+            ).filter(
+                StaffCourseRelation.staff_id == user_id
+            ).all()
+
+            for course, role_name in courses:
+                # 统计已选人数
+                student_count = StudentCourseRelation.query.filter_by(
+                    course_id=course.id
+                ).count()
+                
+                course_list.append({
+                    "id": course.id,
+                    "course_code": course.course_code,
+                    "course_name": course.course_name,
+                    "description": course.description,
+                    "semester": course.semester,
+                    "status": course.status.value,
+                    "role": role_name,  # 授课角色（如"主讲教师"）
+                    "student_count": student_count,  # 已选人数
+                    "create_time": course.create_time.isoformat()
+                })
 
         return True, course_list
 
@@ -255,8 +288,8 @@ def generate_course_code():
 
 
 def create_course(teacher_id, course_data):
-    """创建课程（自动生成邀请码）"""
-    required_fields = ["course_name", "semester"]
+    """创建课程（支持手动指定课程号或自动生成）"""
+    required_fields = ["course_name", "semester", "course_code"]
     for field in required_fields:
         if not course_data.get(field):
             return False, f"缺少必填字段：{field}"
@@ -266,9 +299,15 @@ def create_course(teacher_id, course_data):
     if not re.match(r"^\d{4}-(Spring|Summer|Fall)$", semester_str):
         return False, "学期格式不正确，应为：年份-Spring/Summer/Fall，例如 2024-Fall"
 
+    course_code = course_data.get("course_code", "").strip()
+    if not course_code:
+        return False, "课程号不能为空"
+
     try:
-        # 自动生成唯一的课程邀请码
-        course_code = generate_course_code()
+        # 检查课程代码是否已存在
+        existing = Course.query.filter_by(course_code=course_code).first()
+        if existing:
+            return False, "课程号已存在，请使用其他课程号"
 
         new_course = Course(
             course_code=course_code,
@@ -936,11 +975,11 @@ def get_course_students_service(course_id):
         return False, f"查询失败: {str(e)}"
 
 
-def add_ta_to_course(course_id, staff_no):
+def add_ta_to_course(course_id, student_no):
     """
-    添加助教到课程
+    添加助教到课程（助教从学生中选择，使用学号）
     :param course_id: 课程ID
-    :param staff_no: 助教工号
+    :param student_no: 学生学号
     :return: (success, result)
     """
     try:
@@ -949,22 +988,22 @@ def add_ta_to_course(course_id, staff_no):
         if not course:
             return False, "课程不存在"
 
-        # 查找助教（必须是 ta 角色）
-        ta = Staff.query.filter_by(staff_no=staff_no, role=StaffRole.ta).first()
-        if not ta:
-            return False, "该工号不存在或不是助教"
+        # 查找学生（助教从学生中选择）
+        student = Student.query.filter_by(student_no=student_no).first()
+        if not student:
+            return False, "该学号不存在"
 
-        # 检查是否已经添加过
-        existing = StaffCourseRelation.query.filter_by(
-            staff_id=ta.id,
+        # 检查是否已经添加过（检查 StudentTARelation）
+        existing_ta = StudentTARelation.query.filter_by(
+            student_id=student.id,
             course_id=course_id
         ).first()
-        if existing:
-            return False, "该助教已经加入此课程"
+        if existing_ta:
+            return False, "该学生已经作为助教加入此课程"
 
-        # 创建关联
-        relation = StaffCourseRelation(
-            staff_id=ta.id,
+        # 创建学生-课程助教关联
+        relation = StudentTARelation(
+            student_id=student.id,
             course_id=course_id,
             role="助教"
         )
@@ -972,14 +1011,89 @@ def add_ta_to_course(course_id, staff_no):
         db.session.commit()
 
         return True, {
-            "ta_id": ta.id,
-            "ta_name": ta.name,
-            "ta_staff_no": ta.staff_no
+            "ta_id": student.id,
+            "ta_name": student.name,
+            "ta_student_no": student.student_no
         }
 
     except Exception as e:
         db.session.rollback()
         return False, f"添加助教失败：{str(e)}"
+
+
+def get_course_tas(course_id):
+    """
+    获取课程的助教列表
+    :param course_id: 课程ID
+    :return: (success, result)
+    """
+    try:
+        # 检查课程是否存在
+        course = Course.query.get(course_id)
+        if not course:
+            return False, "课程不存在"
+
+        # 查询该课程的所有助教（通过 StudentTARelation）
+        ta_relations = StudentTARelation.query.filter_by(
+            course_id=course_id
+        ).all()
+
+        ta_list = []
+        for relation in ta_relations:
+            student = Student.query.get(relation.student_id)
+            if student:
+                ta_list.append({
+                    "id": student.id,
+                    "student_no": student.student_no,
+                    "name": student.name,
+                    "email": student.email,
+                    "phone": student.phone,
+                    "role": relation.role,
+                    "create_time": relation.create_time.isoformat() if relation.create_time else None
+                })
+
+        return True, ta_list
+
+    except Exception as e:
+        db.session.rollback()
+        return False, f"获取助教列表失败：{str(e)}"
+
+
+def get_course_teachers(course_id):
+    """
+    获取课程的教师列表
+    :param course_id: 课程ID
+    :return: (success, result)
+    """
+    try:
+        # 检查课程是否存在
+        course = Course.query.get(course_id)
+        if not course:
+            return False, "课程不存在"
+
+        # 查询该课程的所有教师（通过 StaffCourseRelation）
+        staff_relations = StaffCourseRelation.query.filter_by(
+            course_id=course_id
+        ).all()
+
+        teacher_list = []
+        for relation in staff_relations:
+            staff = Staff.query.get(relation.staff_id)
+            if staff and staff.role == StaffRole.teacher:  # 只返回教师，不包括助教
+                teacher_list.append({
+                    "id": staff.id,
+                    "staff_no": staff.staff_no,
+                    "name": staff.name,
+                    "email": staff.email,
+                    "phone": staff.phone,
+                    "role": relation.role,  # 授课角色（如"主讲教师"）
+                })
+
+        return True, teacher_list
+
+    except Exception as e:
+        db.session.rollback()
+        return False, f"获取教师列表失败：{str(e)}"
 
 
 def check_teacher_identifier(identifier):

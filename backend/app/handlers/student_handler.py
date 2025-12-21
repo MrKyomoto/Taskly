@@ -17,6 +17,8 @@ from app.services.student_service import (
     check_student_identifier,
     verify_student_contact,
     reset_student_password_with_verification,
+    get_course_teachers_for_student,
+    get_course_tas_for_student,
 )
 from app.util.verification_code import (
     generate_verification_code,
@@ -165,6 +167,36 @@ def handle_get_enrolled_course_homeworks(student_id, course_id):
     return jsonify({"error": data}), 400
 
 
+def handle_get_course_teachers(student_id, course_id):
+    """获取课程的教师列表（学生端）"""
+    success, result = get_course_teachers_for_student(student_id, course_id)
+    if success:
+        response = jsonify({
+            "teacher_list": result,
+            "count": len(result)
+        })
+        response.headers['Access-Control-Allow-Origin'] = '*'
+        return response, 200
+    response = jsonify({"error": result})
+    response.headers['Access-Control-Allow-Origin'] = '*'
+    return response, 400
+
+
+def handle_get_course_tas(student_id, course_id):
+    """获取课程的助教列表（学生端）"""
+    success, result = get_course_tas_for_student(student_id, course_id)
+    if success:
+        response = jsonify({
+            "ta_list": result,
+            "count": len(result)
+        })
+        response.headers['Access-Control-Allow-Origin'] = '*'
+        return response, 200
+    response = jsonify({"error": result})
+    response.headers['Access-Control-Allow-Origin'] = '*'
+    return response, 400
+
+
 def handle_get_student_submission(student_id, course_id, homework_id):
     """处理获取学生作业提交内容的请求"""
     success, result = get_student_homework_submission(
@@ -208,15 +240,26 @@ def handle_upload_homework_image(student_id, homework_id, files):
     try:
         homework = Homework.query.get(homework_id)
         if not homework:
-            return jsonify({"error": f"作业ID {homework_id} 不存在"}), 404
+            response = jsonify({"error": f"作业ID {homework_id} 不存在"})
+            response.headers['Access-Control-Allow-Origin'] = '*'
+            return response, 404
         course_id = homework.course_id
 
+        # 检查学生是否选了这个课程，或者是否是助教
+        from app.models import StudentTARelation
         is_enrolled = StudentCourseRelation.query.filter_by(
             student_id=student_id,
             course_id=course_id
         ).first()
-        if not is_enrolled:
-            return jsonify({"error": "未选修该课程,无法提交作业"}), 403
+        ta_relation = StudentTARelation.query.filter_by(
+            student_id=student_id,
+            course_id=course_id
+        ).first()
+        
+        if not is_enrolled and not ta_relation:
+            response = jsonify({"error": "未选修该课程,无法提交作业"})
+            response.headers['Access-Control-Allow-Origin'] = '*'
+            return response, 403
 
         for file in files:
             if file.filename == '':
@@ -224,31 +267,47 @@ def handle_upload_homework_image(student_id, homework_id, files):
                 continue
 
             try:
-                # 调用单文件上传工具（假设 upload_image 已适配作业图片路径）
-                image_url = upload_image(
+                # 调用单文件上传工具（支持图片和PDF）
+                from app.util.file_upload import upload_file
+                file_url = upload_file(
                     file=file,
                     course_id=course_id,
                     course_hw_no=homework.course_hw_no,
                     resource_type="submit",
                     student_id=student_id
                 )
-                success_urls.append(image_url)
+                # upload_file返回URL字符串或错误响应(tuple)，需要检查
+                if isinstance(file_url, tuple):
+                    # 如果是错误响应，跳过
+                    error_messages.append(f"文件 {file.filename} 上传失败")
+                    continue
+                # 如果是字符串URL，添加到成功列表
+                if isinstance(file_url, str):
+                    success_urls.append(file_url)
+                else:
+                    error_messages.append(f"文件 {file.filename} 上传失败：未知错误")
             except Exception as e:
                 error_messages.append(f"文件 {file.filename} 上传失败: {str(e)}")
 
     # 构建响应
         if not success_urls:
             # 全部失败
-            return jsonify({
+            response = jsonify({
                 "error": "所有文件上传失败",
                 "details": error_messages
-            }), 400
+            })
+            response.headers['Access-Control-Allow-Origin'] = '*'
+            return response, 400
         else:
             # 部分或全部成功
-            return jsonify({
+            response = jsonify({
                 "success_count": len(success_urls),
                 "image_urls": success_urls,
                 "errors": error_messages  # 记录失败的文件信息
-            }), 201
+            })
+            response.headers['Access-Control-Allow-Origin'] = '*'
+            return response, 201
     except Exception as e:
-        return jsonify({"error": f"上传处理失败:{str(e)}"}), 500
+        response = jsonify({"error": f"上传处理失败:{str(e)}"})
+        response.headers['Access-Control-Allow-Origin'] = '*'
+        return response, 500

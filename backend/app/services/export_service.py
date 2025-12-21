@@ -52,8 +52,19 @@ def export_course_grades(course_id, homework_ids=None, student_ids=None):
         # 3. 获取该课程的作业（可选按 homework_ids 过滤，按创建时间排序）
         homework_query = Homework.query.filter_by(course_id=course_id)
         if homework_ids:
+            # 确保 homework_ids 是列表且不为空
+            if not isinstance(homework_ids, list):
+                return False, "作业ID列表格式错误"
+            if len(homework_ids) == 0:
+                return False, "作业ID列表为空"
             homework_query = homework_query.filter(Homework.id.in_(homework_ids))
         homeworks = homework_query.order_by(Homework.create_time.asc()).all()
+        
+        if not homeworks:
+            if homework_ids:
+                return False, f"未找到符合条件的作业（请求的作业ID：{homework_ids}，课程ID：{course_id}）"
+            else:
+                return False, f"该课程（ID：{course_id}）暂无作业"
 
         # 4. 构建数据
         data = []
@@ -103,16 +114,25 @@ def export_course_grades(course_id, homework_ids=None, student_ids=None):
             data.append(row)
 
         # 5. 创建 DataFrame
+        if not data:
+            return False, "没有可导出的数据"
+        
         df = pd.DataFrame(data)
+        
+        # 检查 DataFrame 是否为空
+        if df.empty:
+            return False, "没有可导出的数据"
 
         # 6. 生成 Excel 文件（使用 utf-8-sig 编码避免中文乱码）
-        output = BytesIO()
-        with pd.ExcelWriter(output, engine="openpyxl") as writer:
-            df.to_excel(writer, sheet_name="成绩单", index=False)
-        
-        output.seek(0)
-
-        return True, output
+        try:
+            output = BytesIO()
+            with pd.ExcelWriter(output, engine="openpyxl") as writer:
+                df.to_excel(writer, sheet_name="成绩单", index=False)
+            
+            output.seek(0)
+            return True, output
+        except Exception as e:
+            return False, f"生成Excel文件失败：{str(e)}"
 
     except Exception as e:
         db.session.rollback()

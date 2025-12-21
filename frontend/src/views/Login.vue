@@ -358,6 +358,23 @@
       </template>
     </el-dialog>
 
+    <!-- 助教角色选择对话框 -->
+    <el-dialog v-model="showTARoleDialog" title="选择登录方式" width="400px" :close-on-click-modal="false" :close-on-press-escape="false">
+      <div style="text-align: center; padding: 20px 0;">
+        <p style="margin-bottom: 20px; font-size: 16px;">检测到您是助教，请选择登录方式：</p>
+        <el-space direction="vertical" :size="20" style="width: 100%;">
+          <el-button type="primary" size="large" @click="handleTARoleSelected('teacher')" style="width: 200px;">
+            <el-icon><UserFilled /></el-icon>
+            登录教师端
+          </el-button>
+          <el-button type="success" size="large" @click="handleTARoleSelected('student')" style="width: 200px;">
+            <el-icon><User /></el-icon>
+            登录学生端
+          </el-button>
+        </el-space>
+      </div>
+    </el-dialog>
+
     <!-- 修改密码对话框 -->
     <el-dialog v-model="resetPasswordDialogVisible" title="修改密码" width="400px" @close="resetPasswordDialogVisible = false">
       <el-form :model="resetPasswordForm" :rules="resetPasswordRules" ref="resetPasswordFormRef" label-width="100px" @submit.prevent>
@@ -386,6 +403,7 @@
 import { ref, reactive, computed, watch, onMounted, onUnmounted } from 'vue';
 import { useUserStore } from '@/store/user';
 import { ElMessage, ElMessageBox } from 'element-plus';
+import { UserFilled, User } from '@element-plus/icons-vue';
 import { validateEmail, validatePhone, validatePassword } from '@/utils/validators';
 import { resetPassword } from '@/api/auth';
 import api from '@/api/index';
@@ -411,6 +429,10 @@ const loginRules = {
   password: [{ required: true, message: '请输入密码', trigger: 'blur' }],
 };
 
+// 助教角色选择对话框
+const showTARoleDialog = ref(false);
+const selectedTARole = ref(null);
+
 // 登录处理函数
 const handleLogin = async () => {
   if (!loginFormRef.value) return;
@@ -423,19 +445,45 @@ const handleLogin = async () => {
     userStore.logout(false);
     
     // 调用统一登录接口
-    await userStore.login({
+    const result = await userStore.login({
       username: loginForm.username,
       password: loginForm.password,
     });
     
+    // 如果是助教，需要选择角色
+    if (result?.needsRoleSelection) {
+      showTARoleDialog.value = true;
+      logging.value = false;
+      return;
+    }
+    
     // 登录成功，userStore 会自动跳转
     ElMessage.success('登录成功');
   } catch (error) {
-    console.error('Login error:', error);
+    // 登录错误已在catch中处理
     const errorMessage = error?.response?.data?.error || '登录失败，请检查账号和密码';
     ElMessage.error(errorMessage);
   } finally {
     logging.value = false;
+  }
+};
+
+// 助教选择角色后继续登录
+const handleTARoleSelected = async (role) => {
+  try {
+    selectedTARole.value = role;
+    showTARoleDialog.value = false;
+    
+    // 使用选择的角色重新登录（实际上只是跳转，token已经保存）
+    await userStore.login({
+      username: loginForm.username,
+      password: loginForm.password,
+    }, role);
+    
+    ElMessage.success('登录成功');
+  } catch (error) {
+    // 角色选择错误已在catch中处理
+    ElMessage.error('登录失败，请重试');
   }
 };
 
@@ -1092,7 +1140,7 @@ const handleResetPassword = async () => {
 }
 
 /* 放大 Tabs 标签（学生/教师）文字并增加内间距 */
-::v-deep .login-tabs .el-tabs__header .el-tabs__item {
+:deep(.login-tabs .el-tabs__header .el-tabs__item) {
   font-size: 20px;
   padding: 10px 26px;
   min-width: 110px;
@@ -1100,7 +1148,7 @@ const handleResetPassword = async () => {
 }
 
 /* 激活标签更醒目 */
-::v-deep .login-tabs .el-tabs__header .el-tabs__item.is-active {
+:deep(.login-tabs .el-tabs__header .el-tabs__item.is-active) {
   font-weight: 700;
 }
 

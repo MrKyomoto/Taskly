@@ -5,8 +5,10 @@ from app.models import (
     HomeworkSubmission,
     Student,
     StudentCourseRelation,
+    StudentTARelation,
     Course,
-    CourseStatus
+    CourseStatus,
+    StaffRole
 )
 from werkzeug.security import (
     check_password_hash,
@@ -395,8 +397,40 @@ def get_student_courses(student_id):
             StudentCourseRelation.student_id == student_id
         ).all()
 
-        course_list = []
+        # 同时查询该学生作为助教的课程（通过 StudentTARelation）
+        ta_courses = db.session.query(
+            Course, StudentTARelation.create_time
+        ).join(
+            StudentTARelation,
+            Course.id == StudentTARelation.course_id
+        ).filter(
+            StudentTARelation.student_id == student_id
+        ).all()
+
+        # 合并课程列表，避免重复
+        course_dict = {}
         for course, enroll_time in enrolled_courses:
+            course_dict[course.id] = {
+                'course': course,
+                'enroll_time': enroll_time,
+                'is_ta': False
+            }
+        
+        # 添加助教课程（如果不在已选课程列表中）
+        for course, create_time in ta_courses:
+            if course.id not in course_dict:
+                course_dict[course.id] = {
+                    'course': course,
+                    'enroll_time': create_time,
+                    'is_ta': True
+                }
+
+        course_list = []
+        for course_id, course_data in course_dict.items():
+            course = course_data['course']
+            enroll_time = course_data['enroll_time']
+            is_ta = course_data['is_ta']
+            
             # 查询该课程的教师信息（通过 StaffCourseRelation）
             from app.models import StaffCourseRelation, Staff
             staff_relations = StaffCourseRelation.query.filter_by(
@@ -431,6 +465,110 @@ def get_student_courses(student_id):
     except Exception as e:
         db.session.rollback()
         return False, f"获取课程失败:{str(e)}"
+
+
+def get_course_teachers_for_student(student_id, course_id):
+    """
+    获取课程的教师列表（学生端使用）
+    :param student_id: 学生ID
+    :param course_id: 课程ID
+    :return: (success, result)
+    """
+    try:
+        # 检查学生是否选了这个课程，或者是否是助教
+        enrollment = StudentCourseRelation.query.filter_by(
+            student_id=student_id,
+            course_id=course_id
+        ).first()
+        ta_relation = StudentTARelation.query.filter_by(
+            student_id=student_id,
+            course_id=course_id
+        ).first()
+        
+        if not enrollment and not ta_relation:
+            return False, "未选此课程，无权查看"
+        
+        # 检查课程是否存在
+        course = Course.query.get(course_id)
+        if not course:
+            return False, "课程不存在"
+        
+        # 查询该课程的所有教师（通过 StaffCourseRelation）
+        from app.models import StaffCourseRelation, Staff, StaffRole
+        staff_relations = StaffCourseRelation.query.filter_by(
+            course_id=course_id
+        ).all()
+        
+        teacher_list = []
+        for relation in staff_relations:
+            staff = Staff.query.get(relation.staff_id)
+            if staff and staff.role == StaffRole.teacher:  # 只返回教师，不包括助教
+                teacher_list.append({
+                    "id": staff.id,
+                    "staff_no": staff.staff_no,
+                    "name": staff.name,
+                    "email": staff.email,
+                    "phone": staff.phone,
+                    "role": relation.role,  # 授课角色（如"主讲教师"）
+                })
+        
+        return True, teacher_list
+    
+    except Exception as e:
+        db.session.rollback()
+        return False, f"获取教师列表失败：{str(e)}"
+
+
+def get_course_tas_for_student(student_id, course_id):
+    """
+    获取课程的助教列表（学生端使用）
+    :param student_id: 学生ID
+    :param course_id: 课程ID
+    :return: (success, result)
+    """
+    try:
+        # 检查学生是否选了这个课程，或者是否是助教
+        enrollment = StudentCourseRelation.query.filter_by(
+            student_id=student_id,
+            course_id=course_id
+        ).first()
+        ta_relation = StudentTARelation.query.filter_by(
+            student_id=student_id,
+            course_id=course_id
+        ).first()
+        
+        if not enrollment and not ta_relation:
+            return False, "未选此课程，无权查看"
+        
+        # 检查课程是否存在
+        course = Course.query.get(course_id)
+        if not course:
+            return False, "课程不存在"
+        
+        # 查询该课程的所有助教（通过 StudentTARelation）
+        # StudentTARelation 已在文件顶部导入
+        ta_relations = StudentTARelation.query.filter_by(
+            course_id=course_id
+        ).all()
+        
+        ta_list = []
+        for relation in ta_relations:
+            student = Student.query.get(relation.student_id)
+            if student:
+                ta_list.append({
+                    "id": student.id,
+                    "student_no": student.student_no,
+                    "name": student.name,
+                    "email": student.email,
+                    "phone": student.phone,
+                    "role": relation.role,
+                })
+        
+        return True, ta_list
+    
+    except Exception as e:
+        db.session.rollback()
+        return False, f"获取助教列表失败：{str(e)}"
 
 
 def enroll_course(student_id, course_code):
@@ -490,11 +628,17 @@ def get_student_course_homeworks(student_id, course_id):
         if not course:
             return False, "课程不存在"
 
+        # 检查学生是否选了这个课程，或者是否是助教
         enrollment = StudentCourseRelation.query.filter_by(
             student_id=student_id,
             course_id=course_id
         ).first()
-        if not enrollment:
+        ta_relation = StudentTARelation.query.filter_by(
+            student_id=student_id,
+            course_id=course_id
+        ).first()
+        
+        if not enrollment and not ta_relation:
             return False, "未在该班级课程中,无法查看作业"
 
         homeworks = Homework.query.filter_by(
@@ -545,12 +689,23 @@ def get_student_course_homeworks(student_id, course_id):
                     "score": score,
                 }
 
+            # 解析 image_urls（数据库存储的是 JSON 字符串）
+            image_urls = []
+            if hw.image_urls:
+                try:
+                    import json
+                    image_urls = json.loads(hw.image_urls) if isinstance(hw.image_urls, str) else hw.image_urls
+                    if not isinstance(image_urls, list):
+                        image_urls = []
+                except (json.JSONDecodeError, TypeError):
+                    image_urls = []
+
             homework_list.append({
                 "id": hw.id,
                 "course_hw_no": hw.course_hw_no,
                 "title": hw.title,
                 "content": hw.content,
-                "image_urls": hw.image_urls,  # NOTE: frontend should parse the json str into array
+                "image_urls": image_urls,  # 已解析为数组
                 "type": hw.type.value if hw.type else None,
                 "deadline": hw.deadline.isoformat() if hw.deadline else None,
                 "max_score": hw.max_score or 100,  # 分数上限，默认为100
@@ -575,11 +730,17 @@ def get_student_homework_submission(student_id, course_id, homework_id):
     :return: (success, data/error_msg) 成功返回提交内容，失败返回错误信息
     """
     try:
+        # 检查学生是否选了这个课程，或者是否是助教
         is_enrolled = StudentCourseRelation.query.filter_by(
             student_id=student_id,
             course_id=course_id
         ).first()
-        if not is_enrolled:
+        ta_relation = StudentTARelation.query.filter_by(
+            student_id=student_id,
+            course_id=course_id
+        ).first()
+        
+        if not is_enrolled and not ta_relation:
             return False, "未选修该课程，无权限查看"
 
         # 2. 校验作业是否属于该课程
@@ -674,11 +835,17 @@ def submit_homework(student_id, homework_id, text_content, image_urls):
         return False, "作业不存在"
 
     course_id = homework.course_id
+    # 检查学生是否选了这个课程，或者是否是助教
     has_enrolled = StudentCourseRelation.query.filter_by(
         student_id=student_id,
         course_id=course_id
     ).first()
-    if not has_enrolled:
+    ta_relation = StudentTARelation.query.filter_by(
+        student_id=student_id,
+        course_id=course_id
+    ).first()
+    
+    if not has_enrolled and not ta_relation:
         return False, "未在该班级课程中,无权提交作业"
 
     existing_submission = HomeworkSubmission.query.filter_by(

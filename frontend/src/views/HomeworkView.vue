@@ -18,17 +18,85 @@
           </template>
           <div class="homework-content">
             <div v-if="homeworkInfo.content" class="text-content" v-html="formatTextContent(homeworkInfo.content)"></div>
-            <div v-if="homeworkImages.length > 0" class="requirement-images">
-              <el-image
-                v-for="(img, index) in homeworkImages"
-                :key="index"
-                :src="getImageUrl(img)"
-                :preview-src-list="homeworkImages.map(i => getImageUrl(i))"
-                :initial-index="index"
-                fit="cover"
-                class="requirement-image"
-                lazy
-              />
+          </div>
+        </el-card>
+
+        <!-- 参考文件（老师上传的附件）- 单独卡片 -->
+        <el-card v-if="homeworkAttachments.length > 0" class="reference-files-card" shadow="never">
+          <template #header>
+            <div class="card-title">参考文件</div>
+            <div class="card-subtitle">老师发布的参考材料</div>
+          </template>
+          <div class="attachments-list">
+            <div 
+              v-for="(file, index) in homeworkAttachments" 
+              :key="index"
+              class="attachment-item"
+            >
+              <!-- 图片文件：可以在网页查看 -->
+              <template v-if="isImage(file)">
+                <el-image
+                  :src="getImageUrl(file, true)"
+                  :preview-src-list="homeworkAttachments.filter(f => isImage(f)).map(f => getImageUrl(f, true))"
+                  :initial-index="homeworkAttachments.filter(f => isImage(f)).findIndex(f => f === file)"
+                  fit="cover"
+                  class="attachment-image"
+                  lazy
+                  :preview-teleported="true"
+                />
+                <div class="attachment-name">{{ getFileName(file) }}</div>
+              </template>
+              <!-- PDF文件：提供内嵌预览和下载 -->
+              <template v-else-if="isPDF(file)">
+                <div class="attachment-pdf-wrapper">
+                  <div class="pdf-header">
+                    <el-icon :size="24" class="pdf-icon"><Document /></el-icon>
+                    <div class="pdf-name">{{ getFileName(file) }}</div>
+                  </div>
+                  <div class="pdf-viewer-container">
+                    <iframe
+                      :src="getImageUrl(file, true)"
+                      class="pdf-viewer-iframe"
+                      frameborder="0"
+                    />
+                  </div>
+                  <div class="pdf-actions">
+                    <el-button 
+                      type="primary" 
+                      size="small"
+                      @click="previewPDF(file)"
+                    >
+                      <el-icon><ZoomIn /></el-icon>
+                      在新窗口打开
+                    </el-button>
+                    <el-button 
+                      type="primary" 
+                      size="small"
+                      @click="downloadFile(file)"
+                    >
+                      <el-icon><Download /></el-icon>
+                      下载
+                    </el-button>
+                  </div>
+                </div>
+              </template>
+              <!-- 其他文件类型 -->
+              <template v-else>
+                <div class="attachment-other">
+                  <el-icon :size="48"><Document /></el-icon>
+                  <div class="other-info">
+                    <div class="other-name">{{ getFileName(file) }}</div>
+                    <el-button 
+                      type="primary" 
+                      size="small"
+                      @click="downloadFile(file)"
+                    >
+                      <el-icon><Download /></el-icon>
+                      下载文件
+                    </el-button>
+                  </div>
+                </div>
+              </template>
             </div>
           </div>
         </el-card>
@@ -95,6 +163,8 @@
           <el-form :model="submissionForm" ref="submissionFormRef" label-width="100px">
             <el-form-item label="文字内容">
               <el-input
+                id="homework-text-content"
+                name="text_content"
                 v-model="submissionForm.text_content"
                 type="textarea"
                 :rows="6"
@@ -103,8 +173,10 @@
                 @keydown.enter.ctrl="handleSubmit"
               />
             </el-form-item>
-            <el-form-item label="图片附件">
+            <el-form-item label="文件附件">
               <el-upload
+                id="homework-file-upload"
+                name="file"
                 v-model:file-list="fileList"
                 :action="uploadAction"
                 :headers="uploadHeaders"
@@ -115,16 +187,21 @@
                 :on-progress="handleUploadProgress"
                 :on-preview="handlePreview"
                 :disabled="isOverdue"
-                list-type="picture-card"
+                list-type="text"
                 :limit="10"
-                accept="image/*"
+                accept="image/*,application/pdf"
                 :auto-upload="true"
                 :show-file-list="true"
                 :preview-teleported="true"
               >
+                <el-button type="primary">
                 <el-icon><Plus /></el-icon>
+                  选择文件
+                </el-button>
               </el-upload>
-              <div class="upload-tip">支持上传图片，最多10张</div>
+              <div class="upload-tip">
+                支持上传图片（JPG、PNG、GIF等）和PDF文件，单个文件不超过10MB，最多10个文件
+              </div>
             </el-form-item>
             <el-form-item>
               <el-button type="primary" @click="handleSubmit" :loading="submitting" :disabled="isOverdue">
@@ -144,6 +221,7 @@
             <div v-if="submission.text_content" class="text-content">
               {{ submission.text_content }}
             </div>
+            <el-empty v-else-if="submissionImages.length === 0" description="暂无提交内容" :image-size="80" />
             <div v-if="submissionImages.length > 0" class="submission-images">
               <div 
                 v-for="(img, index) in submissionImages" 
@@ -151,6 +229,27 @@
                 class="submission-image-wrapper"
               >
                 <div class="annotator-container">
+                  <!-- PDF文件显示 -->
+                  <template v-if="isPDF(img)">
+                    <div class="pdf-viewer-wrapper">
+                      <iframe
+                        :src="getImageUrl(typeof img === 'string' ? img : (img.image_url || img.url || img), true)"
+                        class="pdf-viewer"
+                        frameborder="0"
+                      />
+                      <div class="pdf-download">
+                        <el-button 
+                          type="primary" 
+                          size="small"
+                          @click="window.open(getImageUrl(typeof img === 'string' ? img : (img.image_url || img.url || img), true), '_blank')"
+                        >
+                          在新窗口打开
+                        </el-button>
+                      </div>
+                    </div>
+                  </template>
+                  <!-- 图片文件显示 -->
+                  <template v-else-if="isImage(img)">
                   <!-- 如果有批注，显示批注；否则显示原图 -->
                   <template v-if="hasAnnotationForImage(img)">
                     <ImageAnnotator
@@ -163,17 +262,36 @@
                     <!-- 没有批注，显示原图 -->
                     <el-image
                       :src="getImageUrl(typeof img === 'string' ? img : (img.image_url || img.url || img), true)"
-                      :preview-src-list="submissionImages.map(i => {
+                        :preview-src-list="submissionImages.filter(i => isImage(i)).map(i => {
                         const url = typeof i === 'string' ? i : (i.image_url || i.url || i);
                         return getImageUrl(url, true);
                       })"
-                      :initial-index="index"
+                        :initial-index="submissionImages.filter(i => isImage(i)).findIndex(i => {
+                          const url = typeof i === 'string' ? i : (i.image_url || i.url || i);
+                          const imgUrl = typeof img === 'string' ? img : (img.image_url || img.url || img);
+                          return url === imgUrl;
+                        })"
                       fit="cover"
                       class="submission-image-display"
                       lazy
                       :preview-teleported="true"
                       :z-index="3000"
                     />
+                  </template>
+                  </template>
+                  <!-- 其他文件类型 -->
+                  <template v-else>
+                    <div class="file-viewer-wrapper">
+                      <el-icon :size="48"><Document /></el-icon>
+                      <p>{{ typeof img === 'string' ? img : (img.image_url || img.url || img) }}</p>
+                      <el-button 
+                        type="primary" 
+                        size="small"
+                        @click="window.open(getImageUrl(typeof img === 'string' ? img : (img.image_url || img.url || img), true), '_blank')"
+                      >
+                        下载文件
+                      </el-button>
+                    </div>
                   </template>
                 </div>
               </div>
@@ -184,21 +302,25 @@
           </div>
         </el-card>
       </template>
-      <el-empty v-else description="作业不存在或无权访问" :image-size="100" />
+      <el-empty v-else description="作业不存在或无权访问" :image-size="100">
+        <el-button type="primary" @click="goBack">返回</el-button>
+      </el-empty>
     </div>
   </div>
 </template>
 
 <script setup>
-import { ref, computed, onMounted, watch, nextTick } from 'vue';
+import { ref, computed, onMounted, onBeforeUnmount, watch, nextTick } from 'vue';
 import { useRouter, useRoute, onBeforeRouteLeave } from 'vue-router';
 import { ElMessage, ElMessageBox } from 'element-plus';
-import { ArrowLeft, Plus, ZoomIn } from '@element-plus/icons-vue';
+import { ArrowLeft, Plus, ZoomIn, Document, UploadFilled, Download } from '@element-plus/icons-vue';
 import { fetchHomeworkSubmission, submitHomework, uploadHomeworkImage } from '@/api/student';
 import { fetchCourseHomeworks, fetchStudentCourses } from '@/api/student';
 import { useUserStore } from '@/store/user';
 import { getImageUrl, parseImageUrls } from '@/utils/image';
 import ImageAnnotator from '@/components/ImageAnnotator.vue';
+import { formatDateTime as formatDateUtil } from '@/utils/date-formatter';
+import { logger } from '@/utils/logger';
 
 const router = useRouter();
 const route = useRoute();
@@ -252,6 +374,33 @@ const hasAnnotationForImage = (img) => {
   return annotation !== null && annotation.elements && annotation.elements.length > 0;
 };
 
+// 判断文件是否为PDF
+const isPDF = (url) => {
+  if (!url) return false;
+  const urlStr = typeof url === 'string' ? url : (url.image_url || url.url || String(url));
+  return urlStr.toLowerCase().endsWith('.pdf') || urlStr.toLowerCase().includes('.pdf');
+};
+
+// 判断文件是否为图片
+const isImage = (url) => {
+  if (!url) return false;
+  const urlStr = typeof url === 'string' ? url : (url.image_url || url.url || String(url));
+  const lowerUrl = urlStr.toLowerCase();
+  return lowerUrl.endsWith('.jpg') || lowerUrl.endsWith('.jpeg') || 
+         lowerUrl.endsWith('.png') || lowerUrl.endsWith('.gif') || 
+         lowerUrl.endsWith('.webp') || lowerUrl.endsWith('.bmp');
+};
+
+// 根据分数获取颜色
+const getScoreColor = (score, maxScore = 100) => {
+  if (!score && score !== 0) return '#909399';
+  const percentage = (score / maxScore) * 100;
+  if (percentage >= 90) return '#67C23A'; // 绿色 - 优秀
+  if (percentage >= 80) return '#409EFF'; // 蓝色 - 良好
+  if (percentage >= 60) return '#E6A23C'; // 橙色 - 及格
+  return '#F56C6C'; // 红色 - 不及格
+};
+
 // 计算上传接口
 const uploadAction = computed(() => {
   return `/api/students/me/homeworks/${homeworkId.value}/upload-image`;
@@ -265,17 +414,72 @@ const uploadHeaders = computed(() => {
   };
 });
 
-// 解析作业图片
-const homeworkImages = computed(() => {
-  if (!homeworkInfo.value?.image_urls) return [];
-  const parsed = parseImageUrls(homeworkInfo.value.image_urls);
-  console.log('作业图片解析:', {
-    raw: homeworkInfo.value.image_urls,
+// 解析作业附件（包括图片和PDF）
+const homeworkAttachments = computed(() => {
+  if (!homeworkInfo.value) {
+    console.log('作业附件：homeworkInfo 为空');
+    return [];
+  }
+  
+  const imageUrls = homeworkInfo.value.image_urls;
+  console.log('作业附件：原始 image_urls 数据', {
+    image_urls: imageUrls,
+    type: typeof imageUrls,
+    isArray: Array.isArray(imageUrls),
+    homeworkInfo: homeworkInfo.value
+  });
+  
+  if (!imageUrls) {
+    console.log('作业附件：image_urls 为空或未定义');
+    return [];
+  }
+  
+  const parsed = parseImageUrls(imageUrls);
+  console.log('作业附件解析结果：', {
     parsed: parsed,
-    urls: parsed.map(img => getImageUrl(img))
+    length: parsed.length,
+    isArray: Array.isArray(parsed)
   });
   return parsed;
 });
+
+// 兼容旧代码：保留 homeworkImages 计算属性
+const homeworkImages = computed(() => {
+  return homeworkAttachments.value.filter(file => isImage(file));
+});
+
+// 获取文件名
+const getFileName = (url) => {
+  if (!url) return '未知文件';
+  const urlStr = typeof url === 'string' ? url : String(url);
+  const parts = urlStr.split('/');
+  const fileName = parts[parts.length - 1];
+  // 移除可能的查询参数
+  return fileName.split('?')[0] || '文件';
+};
+
+// 下载文件
+const downloadFile = (file) => {
+  const fileUrl = typeof file === 'string' ? file : (file.image_url || file.url || file);
+  const fullUrl = getImageUrl(fileUrl, true);
+  
+  // 创建一个临时的 a 标签来触发下载
+  const link = document.createElement('a');
+  link.href = fullUrl;
+  link.download = getFileName(fileUrl);
+  link.target = '_blank';
+  document.body.appendChild(link);
+  link.click();
+  document.body.removeChild(link);
+};
+
+// 预览PDF文件
+const previewPDF = (file) => {
+  const fileUrl = typeof file === 'string' ? file : (file.image_url || file.url || file);
+  const fullUrl = getImageUrl(fileUrl, true);
+  // 在新窗口打开PDF
+  window.open(fullUrl, '_blank');
+};
 
 // 解析提交图片
 const submissionImages = computed(() => {
@@ -298,7 +502,13 @@ const submissionImages = computed(() => {
 
 // 返回上一页
 const goBack = () => {
-  router.push({ name: 'StudentHome' });
+  // 使用 router.back() 返回到上一个页面
+  // 如果浏览器历史记录中没有上一个页面，则返回到主页
+  if (window.history.length > 1) {
+    router.back();
+  } else {
+    router.push({ name: 'StudentHome' });
+  }
 };
 
 // 跳转到提交查看页面
@@ -375,15 +585,7 @@ const formatTextContent = (text) => {
 
 // 格式化日期时间
 const formatDateTime = (dateString) => {
-  if (!dateString) return '未设置';
-  const date = new Date(dateString);
-  return date.toLocaleString('zh-CN', {
-    year: 'numeric',
-    month: '2-digit',
-    day: '2-digit',
-    hour: '2-digit',
-    minute: '2-digit',
-  });
+  return formatDateUtil(dateString, 'YYYY-MM-DD HH:mm');
 };
 
 // 获取分数样式类
@@ -398,14 +600,15 @@ const getScoreClass = (score) => {
 // 上传前验证
 const beforeUpload = (file) => {
   const isImage = file.type.startsWith('image/');
+  const isPDF = file.type === 'application/pdf' || file.name.toLowerCase().endsWith('.pdf');
   const isLt10M = file.size / 1024 / 1024 < 10;
 
-  if (!isImage) {
-    ElMessage.error('只能上传图片文件！');
+  if (!isImage && !isPDF) {
+    ElMessage.error('只能上传图片或PDF文件！');
     return false;
   }
   if (!isLt10M) {
-    ElMessage.error('图片大小不能超过 10MB！');
+    ElMessage.error('文件大小不能超过 10MB！');
     return false;
   }
   return true;
@@ -466,7 +669,8 @@ const handleUploadSuccess = (response, file) => {
       });
     }
     
-    ElMessage.success('图片上传成功');
+    const fileType = isPDF(file) ? 'PDF' : '图片';
+    ElMessage.success(`${fileType}上传成功`);
   } else {
     ElMessage.error('上传失败：未返回图片URL');
     // 如果上传失败，标记为失败状态
@@ -538,7 +742,7 @@ const handleUploadProgress = (event, file) => {
 // 上传失败
 const handleUploadError = (error, file) => {
   ElMessage.error('图片上传失败，请重试');
-  console.error('Upload error:', error);
+  logger.error('Upload error:', error);
   // 标记文件为失败状态
   const fileIndex = fileList.value.findIndex(f => f.uid === file.uid);
   if (fileIndex > -1) {
@@ -546,89 +750,160 @@ const handleUploadError = (error, file) => {
   }
 };
 
-// 预览上传的图片
+// 预览上传的文件（图片或PDF）
 const handlePreview = (file) => {
-  // 获取图片 URL（优先使用 file.url，如果没有则从 response 中获取）
-  let imageUrl = file.url;
-  if (!imageUrl && file.response) {
+  // 获取文件 URL（优先使用 file.url，如果没有则从 response 中获取）
+  let fileUrl = file.url;
+  if (!fileUrl && file.response) {
     if (file.response.image_urls && Array.isArray(file.response.image_urls) && file.response.image_urls.length > 0) {
-      imageUrl = file.response.image_urls[file.response.image_urls.length - 1];
+      fileUrl = file.response.image_urls[file.response.image_urls.length - 1];
     } else if (file.response.image_url) {
-      imageUrl = file.response.image_url;
+      fileUrl = file.response.image_url;
     }
     // 如果是相对路径，需要转换为完整 URL（包含 token）
-    if (imageUrl && !imageUrl.startsWith('http')) {
-      imageUrl = getImageUrl(imageUrl, true);
+    if (fileUrl && !fileUrl.startsWith('http')) {
+      fileUrl = getImageUrl(fileUrl, true);
     }
   }
   
-  if (!imageUrl) {
-    ElMessage.warning('无法预览该图片');
+  if (!fileUrl) {
+    ElMessage.warning('无法预览该文件');
     return;
   }
   
-  // 构建所有图片的预览列表
-  const previewList = fileList.value
-    .filter(f => f.status === 'success')
-    .map(f => {
-      let url = f.url;
-      if (!url && f.response) {
-        if (f.response.image_urls && Array.isArray(f.response.image_urls) && f.response.image_urls.length > 0) {
-          url = f.response.image_urls[f.response.image_urls.length - 1];
-        } else if (f.response.image_url) {
-          url = f.response.image_url;
-        }
-        if (url && !url.startsWith('http')) {
-          url = getImageUrl(url, true);
-        }
-      }
-      return url;
-    })
-    .filter(url => url);
+  // 判断文件类型
+  const fileName = file.name || fileUrl;
+  const isPDFFile = isPDF(fileName) || file.type === 'application/pdf';
+  const isImageFile = isImage(fileName) || (file.type && file.type.startsWith('image/'));
   
-  // 找到当前图片在列表中的索引
-  const currentIndex = previewList.findIndex(url => url === imageUrl);
+  // PDF文件直接在新窗口打开，不创建预览对话框
+  if (isPDFFile) {
+    window.open(fileUrl, '_blank');
+    return;
+  }
   
-  // 使用 Element Plus 的 ImageViewer 或者自定义预览
-  // 创建预览对话框
+  // 图片文件使用全屏预览
+  if (!isImageFile) {
+    ElMessage.warning('该文件类型不支持预览');
+    return;
+  }
+  
+  // 创建预览对话框（仅用于图片）
   const viewer = document.createElement('div');
-  viewer.className = 'image-preview-viewer';
+  viewer.className = 'file-preview-viewer';
   viewer.style.cssText = `
     position: fixed;
     top: 0;
     left: 0;
     width: 100%;
     height: 100%;
-    background: rgba(0, 0, 0, 0.9);
+    background: rgba(0, 0, 0, 0.95);
     z-index: 9999;
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    justify-content: center;
+  `;
+  
+  // 关闭按钮
+  const closeBtn = document.createElement('div');
+  closeBtn.className = 'preview-close-btn';
+  closeBtn.innerHTML = '✕';
+  closeBtn.style.cssText = `
+    position: absolute;
+    top: 20px;
+    right: 20px;
+    width: 40px;
+    height: 40px;
+    background: rgba(255, 255, 255, 0.2);
+    border-radius: 50%;
     display: flex;
     align-items: center;
     justify-content: center;
+    color: #fff;
+    font-size: 24px;
     cursor: pointer;
+    transition: background 0.3s;
+    z-index: 10001;
+  `;
+  closeBtn.onmouseover = () => { closeBtn.style.background = 'rgba(255, 255, 255, 0.3)'; };
+  closeBtn.onmouseout = () => { closeBtn.style.background = 'rgba(255, 255, 255, 0.2)'; };
+  
+  // 预览内容容器
+  const contentWrapper = document.createElement('div');
+  contentWrapper.style.cssText = `
+    width: 95%;
+    height: 95%;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    position: relative;
   `;
   
-  const img = document.createElement('img');
-  img.src = imageUrl;
-  img.style.cssText = `
-    max-width: 90%;
-    max-height: 90%;
-    object-fit: contain;
-  `;
+  if (isImageFile) {
+    // 图片预览
+    const img = document.createElement('img');
+    img.src = fileUrl;
+    img.style.cssText = `
+      max-width: 100%;
+      max-height: 100%;
+      object-fit: contain;
+    `;
+    contentWrapper.appendChild(img);
+  } else {
+    // 其他文件类型，显示下载提示
+    const message = document.createElement('div');
+    message.style.cssText = `
+      color: #fff;
+      font-size: 18px;
+      text-align: center;
+    `;
+    message.innerHTML = `
+      <p>该文件类型不支持预览</p>
+      <button onclick="window.open('${fileUrl}', '_blank')" style="
+        margin-top: 20px;
+        padding: 10px 20px;
+        background: #409EFF;
+        color: #fff;
+        border: none;
+        border-radius: 4px;
+        cursor: pointer;
+        font-size: 14px;
+      ">下载文件</button>
+    `;
+    contentWrapper.appendChild(message);
+  }
   
-  viewer.appendChild(img);
+  viewer.appendChild(closeBtn);
+  viewer.appendChild(contentWrapper);
   document.body.appendChild(viewer);
   
-  const close = () => {
+  const close = (e) => {
+    // 阻止事件冒泡，避免触发其他点击事件
+    if (e) {
+      e.preventDefault();
+      e.stopPropagation();
+    }
     if (document.body.contains(viewer)) {
       document.body.removeChild(viewer);
     }
     document.removeEventListener('keydown', handleEsc);
   };
   
-  viewer.addEventListener('click', close);
+  closeBtn.addEventListener('click', (e) => {
+    close(e);
+  });
+  viewer.addEventListener('click', (e) => {
+    if (e.target === viewer) {
+      close(e);
+    }
+  });
+  
   // ESC 键关闭
   const handleEsc = (e) => {
     if (e.key === 'Escape') {
+      e.preventDefault();
+      e.stopPropagation();
       close();
     }
   };
@@ -639,9 +914,23 @@ const handlePreview = (file) => {
 const handleSubmit = async () => {
   if (!submissionFormRef.value) return;
 
-  // 验证至少要有文字或图片
+  // 验证至少要有文字或文件（图片/PDF）
   if (!submissionForm.value.text_content.trim() && imageUrls.value.length === 0) {
-    ElMessage.warning('请至少输入文字内容或上传一张图片');
+    ElMessage.warning('请至少输入文字内容或上传一个文件（图片或PDF）');
+    return;
+  }
+  
+  // 验证是否有正在上传的文件
+  const uploadingFiles = fileList.value.filter(f => f.status === 'uploading');
+  if (uploadingFiles.length > 0) {
+    ElMessage.warning('请等待文件上传完成后再提交');
+    return;
+  }
+  
+  // 验证是否有上传失败的文件
+  const failedFiles = fileList.value.filter(f => f.status === 'fail');
+  if (failedFiles.length > 0) {
+    ElMessage.warning('有文件上传失败，请删除失败的文件或重新上传');
     return;
   }
 
@@ -711,13 +1000,21 @@ const fetchData = async () => {
         const homeworkList = homeworksRes.data?.homework_list || [];
         const hw = homeworkList.find(h => h.id === homeworkId.value);
         if (hw) {
+          console.log('找到作业，原始数据：', {
+            id: hw.id,
+            title: hw.title,
+            image_urls: hw.image_urls,
+            image_urls_type: typeof hw.image_urls,
+            image_urls_isArray: Array.isArray(hw.image_urls),
+            full_hw: hw
+          });
           foundHomework = hw;
           foundCourseId = course.id;
           break;
         }
       } catch (error) {
         // 记录错误但继续查找下一个课程
-        console.warn(`获取课程 ${course.id} 的作业列表失败:`, error);
+        logger.warn(`获取课程 ${course.id} 的作业列表失败:`, error);
         // 继续查找下一个课程
         continue;
       }
@@ -761,11 +1058,11 @@ const fetchData = async () => {
         // 获取提交详情失败，但不阻止页面显示
         // 404 表示提交记录不存在（可能是数据不一致），静默处理
         if (error?.response?.status === 404) {
-          console.warn('提交记录不存在（可能已删除）:', error);
+          logger.warn('提交记录不存在（可能已删除）:', error);
           submission.value = null;
         } else {
           // 其他错误，记录但不阻止页面显示
-          console.error('获取提交详情失败:', error);
+          logger.error('获取提交详情失败:', error);
           // 不显示错误消息，避免干扰用户
           submission.value = null;
         }
@@ -786,7 +1083,7 @@ const fetchData = async () => {
     fileList.value = [];
   } catch (error) {
     const status = error?.response?.status;
-    console.error('获取作业信息时发生错误:', error);
+    logger.error('获取作业信息时发生错误:', error);
     if (status === 401) {
       ElMessage.error('登录已过期，请重新登录');
       userStore.logout();
@@ -797,7 +1094,7 @@ const fetchData = async () => {
     } else {
       // 如果已经找到了作业信息，即使后续出错也显示作业
       if (homeworkInfo.value) {
-        console.warn('获取作业信息时部分失败，但已找到作业信息，继续显示');
+        logger.warn('获取作业信息时部分失败，但已找到作业信息，继续显示');
         // 不显示错误消息，让用户可以看到作业
       } else {
         ElMessage.error(error?.response?.data?.error || '获取作业信息失败');
@@ -809,8 +1106,20 @@ const fetchData = async () => {
   }
 };
 
+// 事件监听器清理函数
+let cleanupEscHandler = null;
+
 onMounted(() => {
   fetchData();
+  // 设置ESC键监听（如果需要）
+  // cleanupEscHandler 在需要时设置
+});
+
+onBeforeUnmount(() => {
+  // 清理事件监听器
+  if (cleanupEscHandler) {
+    cleanupEscHandler();
+  }
 });
 </script>
 
@@ -852,8 +1161,20 @@ onMounted(() => {
 .homework-requirement-card,
 .grading-card,
 .submission-card,
-.submission-display-card {
+.submission-display-card,
+.view-submission-card {
   margin-bottom: 24px;
+  transition: all 0.3s cubic-bezier(0.4, 0, 0.2, 1);
+  border-radius: 12px;
+}
+
+.homework-requirement-card:hover,
+.grading-card:hover,
+.submission-card:hover,
+.submission-display-card:hover,
+.view-submission-card:hover {
+  box-shadow: 0 4px 20px rgba(0, 0, 0, 0.08);
+  transform: translateY(-2px);
 }
 
 .card-title {
@@ -869,9 +1190,14 @@ onMounted(() => {
 .text-content {
   font-size: 14px;
   color: #606266;
+  line-height: 1.8;
   white-space: pre-wrap;
   word-break: break-word;
   margin-bottom: 16px;
+  padding: 16px;
+  background: #fafafa;
+  border-radius: 8px;
+  border: 1px solid #e4e7ed;
 }
 
 .requirement-images {
@@ -886,6 +1212,158 @@ onMounted(() => {
   height: 200px;
   border-radius: 8px;
   cursor: pointer;
+  transition: all 0.3s ease;
+  box-shadow: 0 2px 8px rgba(0, 0, 0, 0.1);
+}
+
+.requirement-image:hover {
+  transform: scale(1.05);
+  box-shadow: 0 4px 16px rgba(0, 0, 0, 0.15);
+}
+
+/* 参考附件样式 */
+.requirement-attachments {
+  margin-top: 16px;
+  padding-top: 16px;
+  border-top: 1px solid #e4e7ed;
+}
+
+.attachments-title {
+  font-size: 14px;
+  font-weight: 600;
+  color: #303133;
+  margin-bottom: 12px;
+}
+
+.attachments-list {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 16px;
+}
+
+.attachment-item {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  padding: 12px;
+  border: 1px solid #e4e7ed;
+  border-radius: 8px;
+  background: #fff;
+  transition: all 0.3s ease;
+  min-width: 180px;
+}
+
+.attachment-item:hover {
+  box-shadow: 0 2px 12px rgba(0, 0, 0, 0.1);
+  transform: translateY(-2px);
+}
+
+.attachment-image {
+  width: 200px;
+  height: 200px;
+  border-radius: 8px;
+  cursor: pointer;
+  transition: all 0.3s ease;
+  box-shadow: 0 2px 8px rgba(0, 0, 0, 0.1);
+}
+
+.attachment-image:hover {
+  transform: scale(1.05);
+  box-shadow: 0 4px 16px rgba(0, 0, 0, 0.15);
+}
+
+.attachment-name {
+  margin-top: 8px;
+  font-size: 12px;
+  color: #606266;
+  text-align: center;
+  word-break: break-all;
+  max-width: 200px;
+}
+
+.attachment-pdf-wrapper {
+  width: 100%;
+  border: 1px solid #e4e7ed;
+  border-radius: 8px;
+  padding: 16px;
+  background: #fff;
+  margin-bottom: 16px;
+}
+
+.pdf-header {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  margin-bottom: 12px;
+  padding-bottom: 12px;
+  border-bottom: 1px solid #e4e7ed;
+}
+
+.pdf-icon {
+  color: #f56c6c;
+}
+
+.pdf-name {
+  font-size: 14px;
+  font-weight: 500;
+  color: #303133;
+  flex: 1;
+}
+
+.pdf-viewer-container {
+  width: 100%;
+  height: 600px;
+  margin-bottom: 12px;
+  border: 1px solid #e4e7ed;
+  border-radius: 4px;
+  overflow: hidden;
+}
+
+.pdf-viewer-iframe {
+  width: 100%;
+  height: 100%;
+  border: none;
+}
+
+.pdf-actions {
+  display: flex;
+  gap: 8px;
+  justify-content: center;
+}
+
+.attachment-other {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 12px;
+  padding: 16px;
+}
+
+.other-info {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 8px;
+}
+
+.other-name {
+  font-size: 12px;
+  color: #606266;
+  text-align: center;
+  word-break: break-all;
+  max-width: 200px;
+}
+
+/* 参考文件卡片样式 */
+.reference-files-card {
+  margin-top: 20px;
+}
+
+.reference-files-card .card-subtitle {
+  font-size: 12px;
+  color: #909399;
+  font-weight: normal;
+  margin-top: 4px;
 }
 
 .submission-images {
@@ -902,6 +1380,13 @@ onMounted(() => {
   overflow: hidden;
   background: #fff;
   position: relative;
+  transition: all 0.3s ease;
+  box-shadow: 0 2px 8px rgba(0, 0, 0, 0.1);
+}
+
+.submission-image-wrapper:hover {
+  transform: translateY(-2px);
+  box-shadow: 0 4px 16px rgba(0, 0, 0, 0.15);
 }
 
 .annotator-container {
@@ -939,7 +1424,16 @@ onMounted(() => {
 }
 
 .score-section {
-  margin-bottom: 16px;
+  margin-bottom: 20px;
+  padding: 24px;
+  background: linear-gradient(135deg, #f5f7fa 0%, #c3cfe2 100%);
+  border-radius: 12px;
+  transition: all 0.3s ease;
+}
+
+.score-section:hover {
+  transform: scale(1.02);
+  box-shadow: 0 4px 12px rgba(0, 0, 0, 0.1);
 }
 
 .score-label {
@@ -990,15 +1484,31 @@ onMounted(() => {
 
 .feedback-text {
   font-size: 14px;
-  color: #303133;
+  color: #606266;
   line-height: 1.8;
   white-space: pre-wrap;
+  padding: 12px;
+  background: #ffffff;
+  border-radius: 8px;
+  border-left: 3px solid #409EFF;
+  margin-top: 8px;
 }
 
 .upload-tip {
   font-size: 12px;
-  color: #909399;
-  margin-top: 8px;
+  color: #606266;
+  margin-top: 12px;
+  padding: 10px 14px;
+  background: linear-gradient(135deg, #f0f9ff 0%, #e0f2fe 100%);
+  border-radius: 8px;
+  border-left: 3px solid #409EFF;
+  line-height: 1.6;
+  box-shadow: 0 1px 3px rgba(0, 0, 0, 0.05);
+}
+
+.upload-tip::before {
+  content: '💡 ';
+  margin-right: 4px;
 }
 
 .submit-time {
@@ -1006,6 +1516,55 @@ onMounted(() => {
   color: #909399;
   margin-top: 16px;
   text-align: right;
+}
+
+.pdf-viewer-wrapper {
+  width: 100%;
+  min-height: 600px;
+  display: flex;
+  flex-direction: column;
+  background: #f5f7fa;
+}
+
+.pdf-viewer {
+  width: 100%;
+  flex: 1;
+  min-height: 600px;
+  border: none;
+}
+
+.pdf-download {
+  padding: 12px;
+  background: #fff;
+  border-top: 1px solid #ebeef5;
+  text-align: center;
+}
+
+.file-viewer-wrapper {
+  padding: 40px;
+  text-align: center;
+  background: linear-gradient(135deg, #f5f7fa 0%, #e8f0f8 100%);
+  min-height: 200px;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: 16px;
+  border-radius: 8px;
+  transition: all 0.3s ease;
+}
+
+.file-viewer-wrapper:hover {
+  background: linear-gradient(135deg, #e8f0f8 0%, #dbeafe 100%);
+  transform: translateY(-2px);
+  box-shadow: 0 4px 12px rgba(0, 0, 0, 0.1);
+}
+
+.file-viewer-wrapper p {
+  color: #606266;
+  font-size: 14px;
+  word-break: break-all;
+  font-weight: 500;
 }
 
 @media (max-width: 768px) {

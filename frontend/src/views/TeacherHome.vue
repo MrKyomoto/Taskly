@@ -1,14 +1,23 @@
 <template>
-  <div class="teacher-home">
-    <el-header class="header">
+  <div class="teacher-home" :style="{ backgroundColor: personalizationStore.backgroundColor }">
+    <el-header class="header" :style="headerStyle">
       <div class="header-content">
         <div class="header-left">
-          <h1 class="header-title">我的教学课程</h1>
+          <h1 class="header-title">{{ userStore.user?.role === 'ta' ? '我的助教课程' : '我的教学课程' }}</h1>
           <el-tag v-if="userStore.user?.role === 'ta'" type="info" size="small" class="role-tag">
             当前身份：助教
           </el-tag>
         </div>
         <div class="header-actions">
+          <!-- 助教切换按钮 -->
+          <el-button 
+            v-if="userStore.user?.role === 'ta'" 
+            type="warning" 
+            @click="handleSwitchRole"
+            :icon="User"
+          >
+            切换到学生端
+          </el-button>
           <el-button 
             v-if="userStore.user?.role === 'teacher'" 
             type="primary" 
@@ -17,6 +26,7 @@
           >
             新增教学课程
           </el-button>
+          <el-button :icon="Setting" @click="showPersonalization = true" circle />
           <el-dropdown @command="handleCommand">
             <span class="dropdown-trigger">
               {{ profile?.name || '老师' }}
@@ -57,7 +67,8 @@
               <p v-if="!currentSemester" class="semester-tip">
                 当前暂无学期信息，请在创建课程时填写学期。
               </p>
-              <el-row v-if="filteredCurrentCourses.length > 0" :gutter="20">
+              <transition-group name="fade-slide" tag="div" class="course-grid-wrapper">
+              <el-row v-if="filteredCurrentCourses.length > 0" :gutter="20" :key="'current-courses'">
                 <el-col
                   v-for="course in filteredCurrentCourses"
                   :key="course.id"
@@ -134,7 +145,9 @@
                 v-else 
                 :description="courseSearchQuery ? '当前学期中没有找到匹配的课程' : '当前学期暂无课程'"
                 :image-size="100" 
+                :key="'empty-current'"
               />
+              </transition-group>
             </el-tab-pane>
 
             <!-- 历史学期课程 -->
@@ -265,6 +278,15 @@
             @keyup.enter="handleCreateCourse"
           />
         </el-form-item>
+        <el-form-item label="课程号" prop="course_code">
+          <el-input
+            v-model="createCourseForm.course_code"
+            placeholder="请输入课程号"
+            @keyup.enter="handleCreateCourse"
+            maxlength="20"
+            show-word-limit
+          />
+        </el-form-item>
         <el-form-item label="学期" prop="semester">
           <div class="semester-select-group">
             <el-input-number
@@ -309,9 +331,13 @@
             <span class="label">姓名：</span>
             <span class="value">{{ profile.name }}</span>
           </div>
-          <div class="profile-item">
+          <div class="profile-item" v-if="userStore.user?.role !== 'ta'">
             <span class="label">工号：</span>
             <span class="value">{{ profile.staff_no }}</span>
+          </div>
+          <div class="profile-item" v-if="userStore.user?.role === 'ta'">
+            <span class="label">学号：</span>
+            <span class="value">{{ profile.student_no }}</span>
           </div>
           <div class="profile-item">
             <span class="label">邮箱：</span>
@@ -410,22 +436,30 @@
         <el-button type="primary" @click="submitPassword" :loading="changingPassword">确定</el-button>
       </template>
     </el-dialog>
+
+    <!-- 个性化设置面板 -->
+    <PersonalizationPanel v-model="showPersonalization" />
   </div>
 </template>
 
 <script setup>
-import { ref, onMounted, watch, computed } from 'vue';
+import { ref, onMounted, watch, computed, TransitionGroup } from 'vue';
 import { useRouter, onBeforeRouteLeave } from 'vue-router';
 import { ElMessage, ElMessageBox } from 'element-plus';
-import { Plus, ArrowDown, DocumentCopy, Search } from '@element-plus/icons-vue';
+import { Plus, ArrowDown, DocumentCopy, Search, Setting, User } from '@element-plus/icons-vue';
 import { useUserStore } from '@/store/user';
+import { usePersonalizationStore } from '@/store/personalization';
+import PersonalizationPanel from '@/components/PersonalizationPanel.vue';
 import { fetchTeacherProfile, fetchTeacherCourses, createCourse, updateTeacherProfile, updateTeacherPassword } from '@/api/teacher';
 import { validatePassword } from '@/utils/validators';
+import { getCurrentSemester, isCurrentSemester } from '@/utils/semester';
 
 const router = useRouter();
 const userStore = useUserStore();
+const personalizationStore = usePersonalizationStore();
 
 const loading = ref(false);
+const showPersonalization = ref(false);
 const profile = ref(null);
 const courses = ref([]);
 const courseSearchQuery = ref('');
@@ -434,6 +468,15 @@ const selectedHistorySemester = ref('');
 const showCreateCourseDialog = ref(false);
 
 // 可用学期列表（从课程中提取）
+// 个性化样式
+const headerStyle = computed(() => {
+  const module = personalizationStore.modules.header;
+  return {
+    backgroundColor: module.backgroundColor,
+    color: module.textColor,
+  };
+});
+
 const availableSemesters = computed(() => {
   const semesters = new Set();
   courses.value.forEach(course => {
@@ -444,12 +487,13 @@ const availableSemesters = computed(() => {
   return Array.from(semesters).sort().reverse(); // 按时间倒序
 });
 
-// 当前学期（按学期列表中最新的一项作为当前学期）
-const currentSemester = computed(() => availableSemesters.value[0] || '');
+// 当前学期（根据当前时间自动判断，缓存结果避免重复计算）
+const currentSemester = computed(() => currentSemesterInfo.semester);
 
 // 历史学期列表（去掉当前学期，其余从近到远）
 const historySemesters = computed(() => {
-  return availableSemesters.value.slice(1);
+  // 过滤掉当前学期，确保历史学期不包含当前学期
+  return availableSemesters.value.filter(semester => semester !== currentSemester.value);
 });
 
 // 当前学期课程
@@ -457,7 +501,7 @@ const filteredCurrentCourses = computed(() => {
   let result = courses.value;
 
   if (currentSemester.value) {
-    result = result.filter(course => course.semester === currentSemester.value);
+    result = result.filter(course => isCurrentSemester(course.semester));
   }
 
   if (courseSearchQuery.value && courseSearchQuery.value.trim()) {
@@ -559,12 +603,14 @@ const passwordRules = {
   ],
 };
 
-const currentYear = new Date().getFullYear();
+const currentSemesterInfo = getCurrentSemester();
+const currentYear = currentSemesterInfo.year;
 
 const createCourseForm = ref({
   course_name: '',
-  semesterYear: currentYear,
-  semesterTerm: 'Fall',
+  course_code: '',
+  semesterYear: currentSemesterInfo.year,
+  semesterTerm: currentSemesterInfo.term,
   semester: '',
   description: '',
 });
@@ -573,6 +619,11 @@ const createCourseFormRef = ref(null);
 
 const createCourseRules = {
   course_name: [{ required: true, message: '请输入课程名称', trigger: 'blur' }],
+  course_code: [
+    { required: true, message: '请输入课程号', trigger: 'blur' },
+    { min: 1, max: 20, message: '课程号长度应在1-20个字符之间', trigger: 'blur' },
+    { pattern: /^[a-zA-Z0-9_-]+$/, message: '课程号只能包含字母、数字、下划线和连字符', trigger: 'blur' },
+  ],
   semester: [
     {
       validator: (_rule, _value, callback) => {
@@ -647,6 +698,7 @@ const handleCreateCourse = async () => {
     updateSemesterString();
     const payload = {
       course_name: createCourseForm.value.course_name,
+      course_code: createCourseForm.value.course_code.trim(),
       semester: createCourseForm.value.semester,
       description: createCourseForm.value.description,
     };
@@ -657,8 +709,9 @@ const handleCreateCourse = async () => {
     showCreateCourseDialog.value = false;
     createCourseForm.value = {
       course_name: '',
-      semesterYear: currentYear,
-      semesterTerm: 'Fall',
+      course_code: '',
+      semesterYear: currentSemesterInfo.year,
+      semesterTerm: currentSemesterInfo.term,
       semester: '',
       description: '',
     };
@@ -752,8 +805,9 @@ const handleDialogClosed = () => {
   // 重置表单
   createCourseForm.value = {
     course_name: '',
-    semesterYear: currentYear,
-    semesterTerm: 'Fall',
+    course_code: '',
+    semesterYear: currentSemesterInfo.year,
+    semesterTerm: currentSemesterInfo.term,
     semester: '',
     description: '',
   };
@@ -770,6 +824,11 @@ const handleCommand = (command) => {
   } else if (command === 'profile') {
     profileDrawerVisible.value = true;
   }
+};
+
+// 助教切换角色
+const handleSwitchRole = () => {
+  userStore.switchTARole();
 };
 
 // 解析邮箱
@@ -955,6 +1014,8 @@ onBeforeRouteLeave(async (to, from, next) => {
 });
 
 onMounted(() => {
+  // 加载当前用户的个性化设置
+  personalizationStore.loadUserSettings();
   fetchData();
 });
 </script>

@@ -61,6 +61,14 @@
           <el-icon><Delete /></el-icon>
           清空
         </el-button>
+        <el-button 
+          @click="rotateImage"
+          size="small"
+          title="旋转90度"
+        >
+          <el-icon><RefreshRight /></el-icon>
+          旋转
+        </el-button>
       </el-button-group>
     </div>
     
@@ -69,8 +77,8 @@
         class="image-wrapper" 
         ref="imageWrapperRef"
         :style="{
-          transform: `translate(${translateX}px, ${translateY}px) scale(${scale})`,
-          transformOrigin: '0 0'
+          transform: `translate(${translateX}px, ${translateY}px) scale(${scale}) rotate(${rotateAngle}deg)`,
+          transformOrigin: 'center center'
         }"
       >
         <img 
@@ -89,92 +97,6 @@
           @mouseup="!readonly && onMouseUp($event)"
           @mouseleave="!readonly && onMouseUp($event)"
         ></canvas>
-      </div>
-      <!-- 悬浮工具栏 -->
-      <div class="floating-toolbar" v-if="!readonly">
-        <div class="floating-toolbar-inner">
-          <el-button-group>
-            <el-button 
-              :type="tool === 'move' ? 'primary' : 'default'"
-              @click="setTool('move')"
-              size="small"
-              title="移动图片"
-            >
-              <el-icon><Rank /></el-icon>
-            </el-button>
-            <el-button 
-              :type="tool === 'pen-red' ? 'primary' : 'default'"
-              @click="setTool('pen-red')"
-              size="small"
-              title="红笔"
-            >
-              <el-icon><EditPen /></el-icon>
-            </el-button>
-            <el-button 
-              :type="tool === 'pen-blue' ? 'primary' : 'default'"
-              @click="setTool('pen-blue')"
-              size="small"
-              title="蓝笔"
-            >
-              <el-icon><EditPen /></el-icon>
-            </el-button>
-            <el-button 
-              :type="tool === 'text' ? 'primary' : 'default'"
-              @click="setTool('text')"
-              size="small"
-              title="文本批注"
-            >
-              <el-icon><Document /></el-icon>
-            </el-button>
-            <el-button 
-              :type="tool === 'select-text' ? 'primary' : 'default'"
-              @click="setTool('select-text')"
-              size="small"
-              title="选择文本"
-            >
-              <el-icon><Pointer /></el-icon>
-            </el-button>
-            <el-button 
-              @click="undo"
-              size="small"
-              :disabled="history.length === 0"
-              title="撤销"
-            >
-              <el-icon><RefreshLeft /></el-icon>
-            </el-button>
-            <el-button 
-              @click="clear"
-              size="small"
-              :disabled="elements.length === 0"
-              title="清空"
-            >
-              <el-icon><Delete /></el-icon>
-            </el-button>
-          </el-button-group>
-          <div class="zoom-controls">
-            <el-button 
-              @click="zoomOut"
-              size="small"
-              :disabled="scale <= 0.1"
-            >
-              <el-icon><ZoomOut /></el-icon>
-            </el-button>
-            <span class="zoom-value">{{ Math.round(scale * 100) }}%</span>
-            <el-button 
-              @click="zoomIn"
-              size="small"
-              :disabled="scale >= 5"
-            >
-              <el-icon><ZoomIn /></el-icon>
-            </el-button>
-            <el-button 
-              @click="resetView"
-              size="small"
-            >
-              重置
-            </el-button>
-          </div>
-        </div>
       </div>
     </div>
     <el-empty v-else description="暂无图片" :image-size="100" />
@@ -225,7 +147,7 @@
 
 <script setup>
 import { ref, watch, nextTick, onMounted } from 'vue';
-import { EditPen, Document, RefreshLeft, Delete, Rank, ZoomIn, ZoomOut, Pointer } from '@element-plus/icons-vue';
+import { EditPen, Document, RefreshLeft, Delete, Rank, ZoomIn, ZoomOut, Pointer, RefreshRight } from '@element-plus/icons-vue';
 import { getImageUrl } from '@/utils/image';
 
 const props = defineProps({
@@ -265,6 +187,7 @@ const currentPath = ref([]);
 const scale = ref(1);
 const translateX = ref(0);
 const translateY = ref(0);
+const rotateAngle = ref(0); // 旋转角度（度）
 const isDragging = ref(false);
 const dragStart = ref({ x: 0, y: 0 });
 const dragStartTranslate = ref({ x: 0, y: 0 });
@@ -358,12 +281,54 @@ const resetView = () => {
   scale.value = 1;
   translateX.value = 0;
   translateY.value = 0;
+  rotateAngle.value = 0;
+  centerContent();
+};
+
+// 旋转图片
+const rotateImage = () => {
+  rotateAngle.value = (rotateAngle.value + 90) % 360;
+  nextTick(() => {
+    centerContent();
+  });
+};
+
+// 居中显示内容
+const centerContent = () => {
+  if (!contentRef.value || !imageRef.value) return;
+  
+  nextTick(() => {
+    const container = contentRef.value;
+    const image = imageRef.value;
+    if (!container || !image) return;
+    
+    const containerRect = container.getBoundingClientRect();
+    const imageWidth = image.naturalWidth || image.clientWidth;
+    const imageHeight = image.naturalHeight || image.clientHeight;
+    
+    // 考虑旋转后的尺寸
+    let displayWidth = imageWidth * scale.value;
+    let displayHeight = imageHeight * scale.value;
+    
+    // 如果旋转了90度或270度，交换宽高
+    if (rotateAngle.value === 90 || rotateAngle.value === 270) {
+      [displayWidth, displayHeight] = [displayHeight, displayWidth];
+    }
+    
+    // 计算居中位置
+    const centerX = (containerRect.width - displayWidth) / 2;
+    const centerY = (containerRect.height - displayHeight) / 2;
+    
+    translateX.value = centerX;
+    translateY.value = centerY;
+  });
 };
 
 const onImageLoad = () => {
   nextTick(() => {
     setupCanvas();
     redraw();
+    centerContent();
   });
 };
 
@@ -557,20 +522,29 @@ const onMouseMove = (event) => {
     const deltaX = coords.x - textDragStart.value.x;
     const deltaY = coords.y - textDragStart.value.y;
     
-    const element = elements.value[selectedTextIndex.value];
+    // 创建新数组，确保触发响应式更新
+    const currentElements = [...elements.value];
+    const element = currentElements[selectedTextIndex.value];
     const oldPos = getAbsoluteCoordinates({ x: textDragStart.value.elementX, y: textDragStart.value.elementY });
     const newPos = { x: oldPos.x + deltaX, y: oldPos.y + deltaY };
     const normalized = getNormalizedCoordinates(newPos.x, newPos.y);
     
-    element.x = normalized.x;
-    element.y = normalized.y;
+    // 创建新对象，确保响应式更新
+    currentElements[selectedTextIndex.value] = {
+      ...element,
+      x: normalized.x,
+      y: normalized.y,
+    };
+    elements.value = currentElements;
     redraw();
     return;
   }
   
   if (tool.value === 'select-text' && isResizingText.value && selectedTextIndex.value >= 0) {
     const coords = getCanvasCoordinates(event);
-    const element = elements.value[selectedTextIndex.value];
+    // 创建新数组，确保触发响应式更新
+    const currentElements = [...elements.value];
+    const element = currentElements[selectedTextIndex.value];
     const handle = textResizeHandle.value;
     const start = textResizeStart.value;
     
@@ -602,10 +576,19 @@ const onMouseMove = (event) => {
       newY = getNormalizedCoordinates(oldPos.x, newPosY).y;
     }
     
-    element.x = newX;
-    element.y = newY;
-    element.width = newWidth;
-    element.height = newHeight;
+    // 归一化宽度和高度
+    newWidth = newWidth / canvasRef.value.width;
+    newHeight = newHeight / canvasRef.value.height;
+    
+    // 创建新对象，确保响应式更新
+    currentElements[selectedTextIndex.value] = {
+      ...element,
+      x: newX,
+      y: newY,
+      width: newWidth,
+      height: newHeight,
+    };
+    elements.value = currentElements;
     redraw();
     return;
   }
@@ -762,20 +745,30 @@ const confirmTextInput = () => {
   // 保存到历史记录
   history.value.push(JSON.parse(JSON.stringify(elements.value)));
   
-  // 添加文本元素（包含框体和文本颜色）
-  elements.value.push({
+  // 创建新数组，确保触发响应式更新
+  const currentElements = [...elements.value];
+  currentElements.push({
     type: 'text',
     x: textPosition.value.x,
     y: textPosition.value.y,
+    width: 0.2, // 默认宽度
+    height: 0.1, // 默认高度
     content: textInput.value,
+    text: textInput.value, // 兼容PDFAnnotator的text字段
     color: textColor.value, // 文本颜色（向后兼容）
     textColor: textColor.value, // 文本颜色
     boxColor: boxColor.value, // 框体颜色
     boxOpacity: boxOpacity.value, // 框体透明度
   });
+  elements.value = currentElements;
   
   textInput.value = '';
   showTextDialog.value = false;
+  
+  // 文本输入后，自动切换到"选择文本"工具，方便拖动
+  // 但不清除 isDrawing 状态，确保画笔可以继续使用
+  tool.value = 'select-text';
+  
   nextTick(() => {
     redraw();
   });
@@ -847,6 +840,9 @@ onMounted(() => {
   flex: 1;
   overflow: hidden;
   background: #0f172a;
+  display: flex;
+  align-items: center;
+  justify-content: center;
 }
 
 .image-wrapper {
@@ -880,17 +876,7 @@ onMounted(() => {
   cursor: move;
 }
 
-.floating-toolbar {
-  position: absolute;
-  bottom: 24px;
-  left: 50%;
-  transform: translateX(-50%);
-  z-index: 10;
-}
-
 .floating-toolbar-inner {
-  display: inline-flex;
-  align-items: center;
   gap: 12px;
   padding: 8px 14px;
   border-radius: 999px;

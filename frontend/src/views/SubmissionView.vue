@@ -1,5 +1,5 @@
 <template>
-  <div class="submission-view">
+  <div class="submission-view fade-in">
     <el-header class="header">
       <div class="header-content">
         <el-button text @click="goBack" :icon="ArrowLeft">返回</el-button>
@@ -34,21 +34,41 @@
               {{ submission.text_content }}
             </div>
             <div v-if="submissionImages.length > 0" class="submission-images">
-              <el-image
+              <div
                 v-for="(img, index) in submissionImages" 
                 :key="index"
-                :src="getImageUrl(typeof img === 'string' ? img : (img.image_url || img.url || img), true)"
-                :preview-src-list="submissionImages.map(i => {
-                  const url = typeof i === 'string' ? i : (i.image_url || i.url || i);
-                  return getImageUrl(url, true);
-                })"
-                :initial-index="index"
-                fit="cover"
-                class="submission-image-wrapper"
-                lazy
-                :preview-teleported="true"
-                :z-index="3000"
-              />
+                class="submission-file-wrapper"
+              >
+                <!-- PDF文件显示 -->
+                <template v-if="isPDF(img)">
+                  <div class="pdf-viewer-wrapper" @click="previewPDF(img, index)">
+                    <div class="pdf-preview-thumbnail">
+                      <el-icon class="pdf-icon"><Document /></el-icon>
+                      <span class="pdf-name">{{ getFileName(img) }}</span>
+                    </div>
+                  </div>
+                </template>
+                <!-- 图片文件显示 -->
+                <template v-else>
+                  <el-image
+                    :src="getImageUrl(typeof img === 'string' ? img : (img.image_url || img.url || img), true)"
+                    :preview-src-list="submissionImages.filter(i => !isPDF(i)).map(i => {
+                      const url = typeof i === 'string' ? i : (i.image_url || i.url || i);
+                      return getImageUrl(url, true);
+                    })"
+                    :initial-index="submissionImages.filter(i => !isPDF(i)).findIndex(i => {
+                      const url = typeof i === 'string' ? i : (i.image_url || i.url || i);
+                      const imgUrl = typeof img === 'string' ? img : (img.image_url || img.url || img);
+                      return url === imgUrl;
+                    })"
+                    fit="cover"
+                    class="submission-image-wrapper"
+                    lazy
+                    :preview-teleported="true"
+                    :z-index="3000"
+                  />
+                </template>
+              </div>
             </div>
             <div v-if="submission.submit_time" class="submit-time">
               提交时间：{{ formatDateTime(submission.submit_time) }}
@@ -95,29 +115,54 @@
                 class="annotation-item"
               >
                 <div class="annotator-container">
-                  <!-- 查找该图片是否有批注 -->
+                  <!-- 查找该文件是否有批注 -->
                   <template v-if="hasAnnotationForImage(img)">
-                    <ImageAnnotator
-                      :image-url="getImageUrl(typeof img === 'string' ? img : (img.image_url || img.url || img), true)"
-                      :model-value="getAnnotationForImage(img)"
-                      :readonly="true"
-                    />
+                    <!-- PDF文件显示批注 -->
+                    <template v-if="isPDF(img)">
+                      <PDFAnnotator
+                        :pdf-url="getImageUrl(typeof img === 'string' ? img : (img.image_url || img.url || img), true)"
+                        :model-value="getAnnotationForImage(img)"
+                        :readonly="true"
+                      />
+                    </template>
+                    <!-- 图片文件显示批注 -->
+                    <template v-else>
+                      <ImageAnnotator
+                        :image-url="getImageUrl(typeof img === 'string' ? img : (img.image_url || img.url || img), true)"
+                        :model-value="getAnnotationForImage(img)"
+                        :readonly="true"
+                      />
+                    </template>
                   </template>
                   <template v-else>
-                    <!-- 没有批注，显示原图 -->
-                    <el-image
-                      :src="getImageUrl(typeof img === 'string' ? img : (img.image_url || img.url || img), true)"
-                      :preview-src-list="submissionImages.map(i => {
-                        const url = typeof i === 'string' ? i : (i.image_url || i.url || i);
-                        return getImageUrl(url, true);
-                      })"
-                      :initial-index="index"
-                      fit="cover"
-                      class="submission-image-wrapper"
-                      lazy
-                      :preview-teleported="true"
-                      :z-index="3000"
-                    />
+                    <!-- 没有批注，显示原图或PDF -->
+                    <template v-if="isPDF(img)">
+                      <div class="pdf-viewer-wrapper" @click="previewPDF(img, index)">
+                        <div class="pdf-preview-thumbnail">
+                          <el-icon class="pdf-icon"><Document /></el-icon>
+                          <span class="pdf-name">{{ getFileName(img) }}</span>
+                        </div>
+                      </div>
+                    </template>
+                    <template v-else>
+                      <el-image
+                        :src="getImageUrl(typeof img === 'string' ? img : (img.image_url || img.url || img), true)"
+                        :preview-src-list="submissionImages.filter(i => !isPDF(i)).map(i => {
+                          const url = typeof i === 'string' ? i : (i.image_url || i.url || i);
+                          return getImageUrl(url, true);
+                        })"
+                        :initial-index="submissionImages.filter(i => !isPDF(i)).findIndex(i => {
+                          const url = typeof i === 'string' ? i : (i.image_url || i.url || i);
+                          const imgUrl = typeof img === 'string' ? img : (img.image_url || img.url || img);
+                          return url === imgUrl;
+                        })"
+                        fit="cover"
+                        class="submission-image-wrapper"
+                        lazy
+                        :preview-teleported="true"
+                        :z-index="3000"
+                      />
+                    </template>
                   </template>
                 </div>
               </div>
@@ -139,9 +184,11 @@
 import { ref, computed, onMounted } from 'vue';
 import { useRouter, useRoute } from 'vue-router';
 import { ElMessage } from 'element-plus';
-import { ArrowLeft } from '@element-plus/icons-vue';
+import { ArrowLeft, Document } from '@element-plus/icons-vue';
 import { fetchHomeworkSubmission, fetchCourseHomeworks, fetchStudentCourses } from '@/api/student';
 import { useUserStore } from '@/store/user';
+import { formatDateTime as formatDateUtil } from '@/utils/date-formatter';
+import { logger } from '@/utils/logger';
 import { getImageUrl, parseImageUrls } from '@/utils/image';
 import ImageAnnotator from '@/components/ImageAnnotator.vue';
 
@@ -198,9 +245,145 @@ const hasAnnotationForImage = (img) => {
   return annotation !== null && annotation.elements && annotation.elements.length > 0;
 };
 
+// 判断文件是否为PDF
+const isPDF = (url) => {
+  if (!url) return false;
+  const urlStr = typeof url === 'string' ? url : (url.image_url || url.url || String(url));
+  return urlStr.toLowerCase().endsWith('.pdf') || urlStr.toLowerCase().includes('.pdf');
+};
+
+// 获取文件名
+const getFileName = (url) => {
+  if (!url) return '文件';
+  const urlStr = typeof url === 'string' ? url : (url.image_url || url.url || String(url));
+  const parts = urlStr.split('/');
+  return parts[parts.length - 1] || '文件';
+};
+
+// 预览PDF
+const previewPDF = (img, index) => {
+  const fileUrl = getImageUrl(typeof img === 'string' ? img : (img.image_url || img.url || img), true);
+  
+  // 创建预览对话框
+  const viewer = document.createElement('div');
+  viewer.className = 'file-preview-viewer';
+  viewer.style.cssText = `
+    position: fixed;
+    top: 0;
+    left: 0;
+    width: 100%;
+    height: 100%;
+    background: rgba(0, 0, 0, 0.95);
+    z-index: 9999;
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    justify-content: center;
+  `;
+  
+  // 关闭按钮
+  const closeBtn = document.createElement('div');
+  closeBtn.className = 'preview-close-btn';
+  closeBtn.innerHTML = '✕';
+  closeBtn.style.cssText = `
+    position: absolute;
+    top: 20px;
+    right: 20px;
+    width: 40px;
+    height: 40px;
+    background: rgba(255, 255, 255, 0.2);
+    border-radius: 50%;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    color: #fff;
+    font-size: 24px;
+    cursor: pointer;
+    transition: background 0.3s;
+    z-index: 10000;
+  `;
+  closeBtn.onmouseover = () => { closeBtn.style.background = 'rgba(255, 255, 255, 0.3)'; };
+  closeBtn.onmouseout = () => { closeBtn.style.background = 'rgba(255, 255, 255, 0.2)'; };
+  
+  // 预览内容容器
+  const contentWrapper = document.createElement('div');
+  contentWrapper.style.cssText = `
+    width: 95%;
+    height: 95%;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    position: relative;
+  `;
+  
+  // PDF预览：使用iframe
+  const iframe = document.createElement('iframe');
+  iframe.src = fileUrl;
+  iframe.style.cssText = `
+    width: 100%;
+    height: 100%;
+    border: none;
+    background: #fff;
+  `;
+  contentWrapper.appendChild(iframe);
+  
+  // 添加在新窗口打开的按钮
+  const openBtn = document.createElement('button');
+  openBtn.textContent = '在新窗口打开';
+  openBtn.style.cssText = `
+    position: absolute;
+    bottom: 20px;
+    right: 20px;
+    padding: 10px 20px;
+    background: #409EFF;
+    color: #fff;
+    border: none;
+    border-radius: 4px;
+    cursor: pointer;
+    font-size: 14px;
+    z-index: 10000;
+  `;
+  openBtn.onclick = () => {
+    window.open(fileUrl, '_blank');
+  };
+  contentWrapper.appendChild(openBtn);
+  
+  viewer.appendChild(closeBtn);
+  viewer.appendChild(contentWrapper);
+  document.body.appendChild(viewer);
+  
+  const close = () => {
+    if (document.body.contains(viewer)) {
+      document.body.removeChild(viewer);
+    }
+    document.removeEventListener('keydown', handleEsc);
+  };
+  
+  closeBtn.addEventListener('click', close);
+  viewer.addEventListener('click', (e) => {
+    if (e.target === viewer) {
+      close();
+    }
+  });
+  
+  // ESC 键关闭
+  const handleEsc = (e) => {
+    if (e.key === 'Escape') {
+      close();
+    }
+  };
+  document.addEventListener('keydown', handleEsc);
+};
+
 // 返回上一页
 const goBack = () => {
-  router.push({ name: 'StudentHome' });
+  // 使用 router.back() 返回到上一个页面
+  // 如果浏览器历史记录中没有上一个页面，则返回到主页
+  if (window.history.length > 1) {
+    router.back();
+  } else {
+    router.push({ name: 'StudentHome' });
+  }
 };
 
 // 跳转到作业详情页
@@ -210,15 +393,7 @@ const goToHomeworkDetail = () => {
 
 // 格式化日期时间
 const formatDateTime = (dateString) => {
-  if (!dateString) return '未设置';
-  const date = new Date(dateString);
-  return date.toLocaleString('zh-CN', {
-    year: 'numeric',
-    month: '2-digit',
-    day: '2-digit',
-    hour: '2-digit',
-    minute: '2-digit',
-  });
+  return formatDateUtil(dateString, 'YYYY-MM-DD HH:mm');
 };
 
 // 获取数据
@@ -298,13 +473,13 @@ const fetchData = async () => {
         }
       } catch (error) {
         if (error?.response?.status !== 404) {
-          console.error('获取提交记录失败:', error);
+          logger.error('获取提交记录失败:', error);
         }
       }
     }
   } catch (error) {
     const status = error?.response?.status;
-    console.error('获取作业信息时发生错误:', error);
+    logger.error('获取作业信息时发生错误:', error);
     if (status === 401) {
       ElMessage.error('登录已过期，请重新登录');
       userStore.logout();
@@ -404,11 +579,54 @@ onMounted(() => {
   margin-top: 16px;
 }
 
+.submission-file-wrapper {
+  margin-bottom: 16px;
+}
+
 .submission-image-wrapper {
   width: 200px;
   height: 200px;
   border-radius: 8px;
   overflow: hidden;
+}
+
+.pdf-viewer-wrapper {
+  width: 200px;
+  height: 200px;
+  border: 2px dashed #dcdfe6;
+  border-radius: 8px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  cursor: pointer;
+  transition: all 0.3s;
+  background: #f5f7fa;
+}
+
+.pdf-viewer-wrapper:hover {
+  border-color: #409EFF;
+  background: #ecf5ff;
+}
+
+.pdf-preview-thumbnail {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 8px;
+  color: #606266;
+}
+
+.pdf-icon {
+  font-size: 48px;
+  color: #409EFF;
+}
+
+.pdf-name {
+  font-size: 12px;
+  max-width: 180px;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
 }
 
 .submit-time {

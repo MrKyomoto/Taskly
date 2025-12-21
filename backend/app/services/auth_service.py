@@ -3,7 +3,7 @@
 支持多表轮询：Admin -> Staff -> Student
 """
 from app.extensions import db
-from app.models import Admin, Staff, Student, StaffRole
+from app.models import Admin, Staff, Student, StaffRole, StudentTARelation
 from werkzeug.security import check_password_hash
 
 
@@ -61,8 +61,13 @@ def unified_authenticate(username, password):
         student = Student.query.filter_by(student_no=username).first()
         if student:
             if check_password_hash(student.password_hash, password):
+                # 检查该学生是否也是助教（通过 StudentTARelation 表）
+                ta_relation = StudentTARelation.query.filter_by(student_id=student.id).first()
+                # 如果学生是助教，返回 role 为 "ta"，否则为 "student"
+                role = "ta" if ta_relation else "student"
+                
                 return True, {
-                    "role": "student",
+                    "role": role,
                     "id": student.id,
                     "user_data": {
                         "id": student.id,
@@ -108,7 +113,11 @@ def check_identifier_exists(identifier):
         # 优先级3: 查询学生表
         student = Student.query.filter_by(student_no=identifier).first()
         if student:
-            return True, {"role": "student", "user_id": student.id}
+            # 检查该学生是否也是助教（通过 StudentTARelation 表）
+            ta_relation = StudentTARelation.query.filter_by(student_id=student.id).first()
+            # 如果学生是助教，返回 role 为 "ta"，否则为 "student"
+            role = "ta" if ta_relation else "student"
+            return True, {"role": role, "user_id": student.id}
 
         # 所有表都没找到
         return False, "账号不存在"

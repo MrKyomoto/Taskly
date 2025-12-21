@@ -87,10 +87,24 @@ export const fetchCourseStudents = (courseId) =>
 /**
  * 添加助教到课程（仅教师）
  * @param {Number} courseId - 课程ID
- * @param {Object} data - 包含 staff_no 字段
+ * @param {Object} data - 包含 student_no 字段（助教从学生中选择）
  */
 export const addTAToCourse = (courseId, data) =>
   request.post(`/teachers/me/courses/${courseId}/add-ta`, data);
+
+/**
+ * 获取课程的助教列表
+ * @param {Number} courseId - 课程ID
+ */
+export const fetchCourseTAs = (courseId) =>
+  request.get(`/teachers/courses/${courseId}/tas`);
+
+/**
+ * 获取课程的教师列表
+ * @param {Number} courseId - 课程ID
+ */
+export const fetchCourseTeachers = (courseId) =>
+  request.get(`/teachers/courses/${courseId}/teachers`);
 
 /**
  * 导出课程成绩为 Excel

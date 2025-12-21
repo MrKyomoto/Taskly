@@ -13,7 +13,17 @@ from app.services.admin_service import (
     delete_user,
     get_admin_profile,
     update_admin_profile,
-    update_admin_password
+    update_admin_password,
+    create_student,
+    update_student,
+    update_staff,
+    create_course,
+    update_course,
+    close_course,
+    delete_course,
+    add_teacher_to_course,
+    add_ta_to_course_admin,
+    add_student_to_course
 )
 
 
@@ -139,8 +149,10 @@ def handle_update_admin_password(admin_id, data):
     if not old_password or not new_password:
         return jsonify({"error": "请提供原密码和新密码"}), 400
 
-    success, result = update_admin_password(
-        admin_id, old_password, new_password)
+    success, result = update_admin_password(admin_id, {
+        "old_password": old_password,
+        "new_password": new_password
+    })
     if success:
         return jsonify({"message": "密码更新成功"}), 200
     return jsonify({"error": result}), 400
@@ -179,4 +191,160 @@ def handle_reset_user_password(user_type, user_id, data):
     success, result = reset_user_password(user_type, user_id, default_password)
     if success:
         return jsonify({"message": result}), 200
+    return jsonify({"error": result}), 400
+
+
+def handle_create_student(data):
+    """创建学生"""
+    success, result = create_student(data)
+    if success:
+        return jsonify({
+            "message": "学生创建成功",
+            "student": result
+        }), 201
+    return jsonify({"error": result}), 400
+
+
+def handle_update_student(student_id, data):
+    """更新学生信息"""
+    try:
+        student_id = int(student_id)
+    except ValueError:
+        return jsonify({"error": "学生ID必须为数字"}), 400
+
+    success, result = update_student(student_id, data)
+    if success:
+        return jsonify({
+            "message": "学生信息更新成功",
+            "student": result
+        }), 200
+    return jsonify({"error": result}), 400
+
+
+def handle_update_staff(staff_id, data):
+    """更新教职工信息"""
+    try:
+        staff_id = int(staff_id)
+    except ValueError:
+        return jsonify({"error": "教职工ID必须为数字"}), 400
+
+    success, result = update_staff(staff_id, data)
+    if success:
+        return jsonify({
+            "message": "教职工信息更新成功",
+            "staff": result
+        }), 200
+    return jsonify({"error": result}), 400
+
+
+def handle_create_course(data):
+    """创建课程"""
+    success, result = create_course(data)
+    if success:
+        return jsonify({
+            "message": "课程创建成功",
+            "course": result
+        }), 201
+    return jsonify({"error": result}), 400
+
+
+def handle_update_course(course_id, data):
+    """更新课程信息"""
+    try:
+        course_id = int(course_id)
+    except ValueError:
+        return jsonify({"error": "课程ID必须为数字"}), 400
+
+    success, result = update_course(course_id, data)
+    if success:
+        return jsonify({
+            "message": "课程信息更新成功",
+            "course": result
+        }), 200
+    return jsonify({"error": result}), 400
+
+
+def handle_close_course(course_id):
+    """课程结课"""
+    try:
+        course_id = int(course_id)
+    except ValueError:
+        return jsonify({"error": "课程ID必须为数字"}), 400
+
+    success, result = close_course(course_id)
+    if success:
+        return jsonify({"message": result}), 200
+    return jsonify({"error": result}), 400
+
+
+def handle_delete_course(course_id):
+    """删除课程"""
+    try:
+        course_id = int(course_id)
+    except ValueError:
+        return jsonify({"error": "课程ID必须为数字"}), 400
+
+    success, result = delete_course(course_id)
+    if success:
+        return jsonify({"message": result}), 200
+    return jsonify({"error": result}), 400
+
+
+def handle_add_teacher_to_course(course_id, data):
+    """管理员添加教师到课程"""
+    try:
+        course_id = int(course_id)
+    except ValueError:
+        return jsonify({"error": "课程ID必须为数字"}), 400
+
+    staff_no = data.get('staff_no')
+    if not staff_no:
+        return jsonify({"error": "工号不能为空"}), 400
+
+    success, result = add_teacher_to_course(course_id, staff_no)
+    if success:
+        return jsonify({
+            "message": "教师添加成功",
+            "teacher": result
+        }), 200
+    return jsonify({"error": result}), 400
+
+
+def handle_add_ta_to_course(course_id, data):
+    """管理员添加助教到课程"""
+    try:
+        course_id = int(course_id)
+    except ValueError:
+        return jsonify({"error": "课程ID必须为数字"}), 400
+
+    student_no = data.get('student_no')
+    if not student_no:
+        return jsonify({"error": "学号不能为空"}), 400
+
+    success, result = add_ta_to_course_admin(course_id, student_no)
+    if success:
+        return jsonify({
+            "message": "助教添加成功",
+            "ta": result
+        }), 200
+    return jsonify({"error": result}), 400
+
+
+def handle_add_student_to_course(course_id, data):
+    """管理员添加学生到课程"""
+    try:
+        course_id = int(course_id)
+    except ValueError:
+        return jsonify({"error": "课程ID必须为数字"}), 400
+
+    student_no = data.get('student_no')
+    if not student_no:
+        return jsonify({"error": "学号不能为空"}), 400
+
+    success, result = add_student_to_course(course_id, student_no)
+    if success:
+        return jsonify({
+            "message": "学生添加成功",
+            "student": result
+        }), 200
     return jsonify({"error": result}), 400

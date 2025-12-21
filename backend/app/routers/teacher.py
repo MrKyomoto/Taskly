@@ -18,6 +18,7 @@ from app.handlers.teacher_handler import (
     handle_get_course_students,
     handle_export_course_grades,
     handle_publish_homework_grades,
+    handle_upload_homework_image,
 )
 from app.util.parse_identity import parse_identity
 from app.services.teacher_service import (
@@ -155,13 +156,23 @@ def reset_password_with_verification():
 @teacher_bp.route('/me', methods=['GET'])
 @jwt_required()
 def get_teacher_profile():
-    """获取当前登录教师的个人资料"""
+    """获取当前登录教师或助教的个人资料"""
     identity_str = get_jwt_identity()
-    teacher_id, error_response = parse_identity(
-        identity_str, expected_role="teacher")
+    # 支持 teacher 和 ta 两种角色
+    user_id, error_response = parse_identity(
+        identity_str, expected_role="staff")
     if error_response:
         return error_response
-    return handle_get_teacher_profile(teacher_id)
+    
+    # 解析角色
+    role, _ = identity_str.split(':', 1)
+    
+    # 如果是助教，返回学生信息；如果是教师，返回教师信息
+    if role == "ta":
+        from app.handlers.student_handler import handle_get_student_profile
+        return handle_get_student_profile(user_id)
+    else:
+        return handle_get_teacher_profile(user_id)
 
 
 @teacher_bp.route('/me', methods=['PATCH'])
@@ -205,12 +216,16 @@ def update_password():
 def get_teacher_courses():
     """获取当前教师或助教负责的课程"""
     identity_str = get_jwt_identity()
-    teacher_id, error_response = parse_identity(
+    user_id, error_response = parse_identity(
         identity_str, expected_role="staff")  # 支持 teacher 和 ta
     if error_response:
         return error_response
 
-    return handle_get_teacher_courses(teacher_id)
+    # 解析角色
+    role, _ = identity_str.split(':', 1)
+    
+    # 如果是助教，需要通过 StudentTARelation 获取课程；如果是教师，通过 StaffCourseRelation
+    return handle_get_teacher_courses(user_id, role)
 
 
 @teacher_bp.route('/me/courses', methods=['POST'])
@@ -252,14 +267,17 @@ def update_course(course_id):
 @teacher_bp.route('/me/courses/<course_id>/homeworks', methods=['GET'])
 @jwt_required()
 def get_course_homeworks(course_id):
-    """获取课程下的所有作业"""
+    """获取课程下的所有作业（支持教师和助教）"""
     identity_str = get_jwt_identity()
-    teacher_id, error_response = parse_identity(
-        identity_str, expected_role="teacher")
+    user_id, error_response = parse_identity(
+        identity_str, expected_role="staff")  # 支持 teacher 和 ta
     if error_response:
         return error_response
 
-    return handle_get_course_homeworks(teacher_id, course_id)
+    # 解析角色
+    role, _ = identity_str.split(':', 1)
+    
+    return handle_get_course_homeworks(user_id, course_id, role)
 
 
 @teacher_bp.route('/me/courses/<course_id>/homeworks', methods=['POST'])
@@ -278,6 +296,51 @@ def create_homework(course_id):
 
     return handle_create_homework(staff_id, course_id, homework_data)
 
+
+@teacher_bp.route('/me/courses/<course_id>/homeworks/<homework_id>/upload-image', methods=['POST', 'OPTIONS'])
+@jwt_required(optional=True)  # OPTIONS 请求不需要认证
+def upload_homework_image(course_id, homework_id):
+    """上传作业图片（支持教师和助教）"""
+    # 处理 OPTIONS 预检请求
+    if request.method == 'OPTIONS':
+        response = jsonify({})
+        response.headers['Access-Control-Allow-Origin'] = '*'
+        response.headers['Access-Control-Allow-Methods'] = 'POST, OPTIONS'
+        response.headers['Access-Control-Allow-Headers'] = 'Content-Type, Authorization, X-Requested-With'
+        response.headers['Access-Control-Max-Age'] = '3600'
+        return response
+    
+    # POST 请求需要认证
+    identity_str = get_jwt_identity()
+    if not identity_str:
+        response = jsonify({"error": "需要登录"})
+        response.headers['Access-Control-Allow-Origin'] = '*'
+        return response, 401
+    
+    result = parse_identity(identity_str, expected_role="staff")  # 改为 staff，支持 teacher 和 ta
+    if len(result) == 3:
+        # parse_identity 返回 (None, jsonify(...), status_code) 格式（错误情况）
+        _, error_response, status_code = result
+        error_response.headers['Access-Control-Allow-Origin'] = '*'
+        error_response.headers['Access-Control-Allow-Methods'] = 'POST, OPTIONS'
+        error_response.headers['Access-Control-Allow-Headers'] = 'Content-Type, Authorization, X-Requested-With'
+        return error_response, status_code
+    
+    # parse_identity 返回 (user_id, None) 格式（成功情况）
+    staff_id, _ = result
+
+    if 'file' not in request.files:
+        response = jsonify({"error": "未找到文件"})
+        response.headers['Access-Control-Allow-Origin'] = '*'
+        return response, 400
+    files = request.files.getlist('file')
+    if not files or all(file.filename == '' for file in files):
+        response = jsonify({"error": "未选择有效文件"})
+        response.headers['Access-Control-Allow-Origin'] = '*'
+        return response, 400
+
+    return handle_upload_homework_image(staff_id, course_id, homework_id, files)
+
 # 批改相关接口
 
 
@@ -286,12 +349,15 @@ def create_homework(course_id):
 def get_student_submissions(course_id, homework_id):
     """获取学生作业提交列表（支持教师和助教）"""
     identity_str = get_jwt_identity()
-    staff_id, error_response = parse_identity(
+    user_id, error_response = parse_identity(
         identity_str, expected_role="staff")  # 改为 staff，支持 teacher 和 ta
     if error_response:
         return error_response
 
-    return handle_get_student_submissions(staff_id, course_id, homework_id)
+    # 解析角色
+    role, _ = identity_str.split(':', 1)
+    
+    return handle_get_student_submissions(user_id, course_id, homework_id, role)
 
 
 @teacher_bp.route('/me/submissions/<submission_id>/grade', methods=['POST'])
@@ -299,16 +365,19 @@ def get_student_submissions(course_id, homework_id):
 def grade_submission(submission_id):
     """批改学生作业（支持教师和助教）"""
     identity_str = get_jwt_identity()
-    staff_id, error_response = parse_identity(
+    user_id, error_response = parse_identity(
         identity_str, expected_role="staff")  # 改为 staff，支持 teacher 和 ta
     if error_response:
         return error_response
+    
+    # 解析角色
+    role, _ = identity_str.split(':', 1)
 
     grade_data = request.get_json()
     if not grade_data:
         return jsonify({"error": "评分数据不能为空"}), 400
 
-    return handle_grade_submission(staff_id, submission_id, grade_data)
+    return handle_grade_submission(user_id, submission_id, grade_data, role)
 
 
 @teacher_bp.route('/me/courses/<course_id>/homeworks/<homework_id>/students/<student_id>/grade-zero', methods=['POST'])
@@ -397,14 +466,71 @@ def add_ta_to_course(course_id):
     from app.handlers.teacher_handler import handle_add_ta_to_course
     return handle_add_ta_to_course(teacher_id, course_id, data)
 
-# 导出课程成绩
-@teacher_bp.route('/me/courses/<int:course_id>/export-grades', methods=['GET'])
+# 获取课程助教列表
+@teacher_bp.route('/courses/<course_id>/tas', methods=['GET'])
 @jwt_required()
-def export_grades(course_id):
+def get_course_tas(course_id):
+    """获取课程的助教列表（支持教师和助教）"""
     identity_str = get_jwt_identity()
+    staff_id, error_response = parse_identity(
+        identity_str, expected_role="staff")  # 支持 teacher 和 ta
+    if error_response:
+        return error_response
+
+    try:
+        course_id = int(course_id)
+    except ValueError:
+        return jsonify({"error": "课程ID必须为数字"}), 400
+
+    from app.handlers.teacher_handler import handle_get_course_tas
+    return handle_get_course_tas(staff_id, course_id)
+
+
+@teacher_bp.route('/courses/<course_id>/teachers', methods=['GET'])
+@jwt_required()
+def get_course_teachers(course_id):
+    """获取课程的教师列表（支持教师和助教查看）"""
+    identity_str = get_jwt_identity()
+    staff_id, error_response = parse_identity(
+        identity_str, expected_role="staff")  # 支持 teacher 和 ta
+    if error_response:
+        return error_response
+
+    try:
+        course_id = int(course_id)
+    except ValueError:
+        return jsonify({"error": "课程ID必须为数字"}), 400
+
+    from app.handlers.teacher_handler import handle_get_course_teachers
+    return handle_get_course_teachers(staff_id, course_id)
+
+# 导出课程成绩
+@teacher_bp.route('/me/courses/<int:course_id>/export-grades', methods=['GET', 'OPTIONS'])
+@jwt_required(optional=True)
+def export_grades(course_id):
+    # 处理 OPTIONS 预检请求
+    if request.method == 'OPTIONS':
+        response = jsonify({})
+        response.headers['Access-Control-Allow-Origin'] = '*'
+        response.headers['Access-Control-Allow-Methods'] = 'GET, OPTIONS'
+        response.headers['Access-Control-Allow-Headers'] = 'Content-Type, Authorization, X-Requested-With'
+        response.headers['Access-Control-Max-Age'] = '3600'
+        return response, 200
+    
+    identity_str = get_jwt_identity()
+    if not identity_str:
+        response = jsonify({"error": "需要登录"})
+        response.headers['Access-Control-Allow-Origin'] = '*'
+        return response, 401
+    
     staff_id, error_response = parse_identity(
         identity_str, expected_role="staff")
     if error_response:
+        if isinstance(error_response, tuple):
+            response, status_code = error_response
+            response.headers['Access-Control-Allow-Origin'] = '*'
+            return response, status_code
+        error_response.headers['Access-Control-Allow-Origin'] = '*'
         return error_response
 
     # 解析可选过滤参数：homework_ids 和 student_ids（逗号分隔的 ID 列表）
@@ -429,7 +555,19 @@ def export_grades(course_id):
     homework_ids = parse_id_list(homework_ids_param)
     student_ids = parse_id_list(student_ids_param)
 
-    return handle_export_course_grades(staff_id, course_id, homework_ids, student_ids)
+    result = handle_export_course_grades(staff_id, course_id, homework_ids, student_ids)
+    # 确保响应包含 CORS 头
+    if isinstance(result, tuple):
+        response, status_code = result
+        response.headers['Access-Control-Allow-Origin'] = '*'
+        response.headers['Access-Control-Allow-Methods'] = 'GET, OPTIONS'
+        response.headers['Access-Control-Allow-Headers'] = 'Content-Type, Authorization, X-Requested-With'
+        return response, status_code
+    # 如果是 send_file 返回的响应对象
+    result.headers['Access-Control-Allow-Origin'] = '*'
+    result.headers['Access-Control-Allow-Methods'] = 'GET, OPTIONS'
+    result.headers['Access-Control-Allow-Headers'] = 'Content-Type, Authorization, X-Requested-With'
+    return result
 
 
 @teacher_bp.route('/me/courses/<int:course_id>/homeworks/<int:homework_id>/publish-grades', methods=['POST'])
@@ -437,9 +575,12 @@ def export_grades(course_id):
 def publish_homework_grades(course_id, homework_id):
     """发布某次作业的成绩（学生在发布前看不到成绩）"""
     identity_str = get_jwt_identity()
-    staff_id, error_response = parse_identity(
+    user_id, error_response = parse_identity(
         identity_str, expected_role="staff")
     if error_response:
         return error_response
 
-    return handle_publish_homework_grades(staff_id, course_id, homework_id)
+    # 解析角色
+    role, _ = identity_str.split(':', 1)
+
+    return handle_publish_homework_grades(user_id, course_id, homework_id, role)

@@ -18,6 +18,8 @@ from app.handlers.student_handler import (
     handle_update_student_profile,
     handle_update_student_password,
     handle_get_student_submission,
+    handle_get_course_teachers,
+    handle_get_course_tas,
 )
 from app.util.parse_identity import (
     parse_identity
@@ -176,10 +178,10 @@ def reset_password_with_verification():
 @student_bp.route('/me', methods=['GET'])
 @jwt_required()
 def get_student_profile():
-    """获取当前登录学生的个人资料"""
+    """获取当前登录学生或助教的个人资料"""
     identity_str = get_jwt_identity()
     student_id, error_response = parse_identity(
-        identity_str, expected_role="student")
+        identity_str, expected_role="student_or_ta")
     if error_response:
         return error_response
     return handle_get_student_profile(student_id)
@@ -188,10 +190,10 @@ def get_student_profile():
 @student_bp.route('/me', methods=['PATCH'])
 @jwt_required()
 def update_student_profile_route():
-    """修改当前登录学生的个人资料"""
+    """修改当前登录学生或助教的个人资料"""
     identity_str = get_jwt_identity()
     student_id, error_response = parse_identity(
-        identity_str, expected_role="student")
+        identity_str, expected_role="student_or_ta")
     if error_response:
         return error_response
 
@@ -205,10 +207,10 @@ def update_student_profile_route():
 @student_bp.route('/me/password', methods=['PATCH'])
 @jwt_required()
 def update_password():
-    """修改当前登录学生的密码"""
+    """修改当前登录学生或助教的密码"""
     identity_str = get_jwt_identity()
     student_id, error_response = parse_identity(
-        identity_str, expected_role="student"
+        identity_str, expected_role="student_or_ta"
     )
     if error_response:
         return error_response
@@ -224,10 +226,10 @@ def update_password():
 @student_bp.route('/me/courses', methods=['GET'])
 @jwt_required()
 def get_enrolled_courses():
-    """获取当前学生已选课程"""
+    """获取当前学生或助教已选课程"""
     identity_str = get_jwt_identity()
     student_id, error_response = parse_identity(
-        identity_str, expected_role="student")
+        identity_str, expected_role="student_or_ta")
     if error_response:
         return error_response
 
@@ -237,10 +239,10 @@ def get_enrolled_courses():
 @student_bp.route('/me/courses', methods=['POST'])
 @jwt_required()
 def enroll_course():
-    """学生选课(准确的说是加入班级)"""
+    """学生或助教选课(准确的说是加入班级)"""
     identity_str = get_jwt_identity()
     student_id, error_response = parse_identity(
-        identity_str, expected_role="student")
+        identity_str, expected_role="student_or_ta")
     if error_response:
         return error_response
 
@@ -251,10 +253,10 @@ def enroll_course():
 @student_bp.route('/me/courses/<course_id>/homeworks', methods=['GET'])
 @jwt_required()
 def get_enrolled_course_homeworks(course_id):
-    """获取某门课程的所有作业"""
+    """获取某门课程的所有作业（支持学生和助教）"""
     identity_str = get_jwt_identity()
     student_id, error_response = parse_identity(
-        identity_str, expected_role="student")
+        identity_str, expected_role="student_or_ta")
     if error_response:
         return error_response
 
@@ -264,11 +266,11 @@ def get_enrolled_course_homeworks(course_id):
 @student_bp.route('/me/courses/<course_id>/homeworks/<homework_id>/submission', methods=['GET'])
 @jwt_required()
 def get_homework_submission(course_id, homework_id):
-    """查看当前学生在某课程中某作业的提交内容"""
+    """查看当前学生或助教在某课程中某作业的提交内容"""
     # 解析身份信息
     identity_str = get_jwt_identity()
     student_id, error_response = parse_identity(
-        identity_str, expected_role="student"
+        identity_str, expected_role="student_or_ta"
     )
     if error_response:
         return error_response
@@ -283,22 +285,49 @@ def get_homework_submission(course_id, homework_id):
     return handle_get_student_submission(student_id, course_id, homework_id)
 
 
-@student_bp.route('/me/homeworks/<homework_id>/upload-image', methods=['POST'])
-@jwt_required()
+@student_bp.route('/me/homeworks/<homework_id>/upload-image', methods=['POST', 'OPTIONS'])
+@jwt_required(optional=True)
 def upload_homework_image(homework_id):
+    # 处理OPTIONS预检请求
+    if request.method == 'OPTIONS':
+        response = jsonify({})
+        response.headers['Access-Control-Allow-Origin'] = '*'
+        response.headers['Access-Control-Allow-Methods'] = 'POST, OPTIONS'
+        response.headers['Access-Control-Allow-Headers'] = 'Content-Type, Authorization, X-Requested-With'
+        return response, 200
+    
     identity_str = get_jwt_identity()
     student_id, error_response = parse_identity(
-        identity_str, expected_role="student")
+        identity_str, expected_role="student_or_ta")
     if error_response:
+        # 确保错误响应也包含CORS头
+        if isinstance(error_response, tuple):
+            response, status_code = error_response
+            response.headers['Access-Control-Allow-Origin'] = '*'
+            return response, status_code
+        error_response.headers['Access-Control-Allow-Origin'] = '*'
         return error_response
 
-    if 'file' not in request.files:
-        return jsonify({"error": "未找到文件"}), 400
-    files = request.files.getlist('file')
+    # 检查文件字段（支持 'file' 和 'homework_files'）
+    files = None
+    if 'file' in request.files:
+        files = request.files.getlist('file')
+    elif 'homework_files' in request.files:
+        files = request.files.getlist('homework_files')
+    
     if not files or all(file.filename == '' for file in files):
-        return jsonify({"error": "未选择有效文件"}), 400
+        response = jsonify({"error": "未找到文件或未选择有效文件"})
+        response.headers['Access-Control-Allow-Origin'] = '*'
+        return response, 400
 
-    return handle_upload_homework_image(student_id, homework_id, files)
+    result = handle_upload_homework_image(student_id, homework_id, files)
+    # 确保响应包含CORS头
+    if isinstance(result, tuple):
+        response, status_code = result
+        response.headers['Access-Control-Allow-Origin'] = '*'
+        return response, status_code
+    result.headers['Access-Control-Allow-Origin'] = '*'
+    return result
 
 
 @student_bp.route('/me/homeworks/<homework_id>/submission', methods=['POST'])
@@ -306,7 +335,7 @@ def upload_homework_image(homework_id):
 def submit_homework(homework_id):
     identity_str = get_jwt_identity()
     student_id, error_response = parse_identity(
-        identity_str, expected_role="student")
+        identity_str, expected_role="student_or_ta")
     if error_response:
         return error_response
     homework_data = request.get_json()
@@ -314,3 +343,69 @@ def submit_homework(homework_id):
         return jsonify({"error": "提交数据不能为空"}), 400
 
     return handle_submit_homework(student_id=student_id, homework_id=homework_id, homework_data=homework_data)
+
+
+@student_bp.route('/me/courses/<int:course_id>/teachers', methods=['GET', 'OPTIONS'])
+@jwt_required(optional=True)
+def get_course_teachers_for_student_route(course_id):
+    """获取课程的教师列表（学生端使用）"""
+    # 处理OPTIONS预检请求
+    if request.method == 'OPTIONS':
+        response = jsonify({})
+        response.headers['Access-Control-Allow-Origin'] = '*'
+        response.headers['Access-Control-Allow-Methods'] = 'GET, OPTIONS'
+        response.headers['Access-Control-Allow-Headers'] = 'Content-Type, Authorization, X-Requested-With'
+        return response, 200
+    
+    identity_str = get_jwt_identity()
+    student_id, error_response = parse_identity(
+        identity_str, expected_role="student_or_ta")
+    if error_response:
+        # 确保错误响应也包含CORS头
+        if isinstance(error_response, tuple):
+            response, status_code = error_response
+            response.headers['Access-Control-Allow-Origin'] = '*'
+            return response, status_code
+        error_response.headers['Access-Control-Allow-Origin'] = '*'
+        return error_response
+    result = handle_get_course_teachers(student_id, course_id)
+    # 确保响应包含CORS头
+    if isinstance(result, tuple):
+        response, status_code = result
+        response.headers['Access-Control-Allow-Origin'] = '*'
+        return response, status_code
+    result.headers['Access-Control-Allow-Origin'] = '*'
+    return result
+
+
+@student_bp.route('/me/courses/<int:course_id>/tas', methods=['GET', 'OPTIONS'])
+@jwt_required(optional=True)
+def get_course_tas_for_student_route(course_id):
+    """获取课程的助教列表（学生端使用）"""
+    # 处理OPTIONS预检请求
+    if request.method == 'OPTIONS':
+        response = jsonify({})
+        response.headers['Access-Control-Allow-Origin'] = '*'
+        response.headers['Access-Control-Allow-Methods'] = 'GET, OPTIONS'
+        response.headers['Access-Control-Allow-Headers'] = 'Content-Type, Authorization, X-Requested-With'
+        return response, 200
+    
+    identity_str = get_jwt_identity()
+    student_id, error_response = parse_identity(
+        identity_str, expected_role="student_or_ta")
+    if error_response:
+        # 确保错误响应也包含CORS头
+        if isinstance(error_response, tuple):
+            response, status_code = error_response
+            response.headers['Access-Control-Allow-Origin'] = '*'
+            return response, status_code
+        error_response.headers['Access-Control-Allow-Origin'] = '*'
+        return error_response
+    result = handle_get_course_tas(student_id, course_id)
+    # 确保响应包含CORS头
+    if isinstance(result, tuple):
+        response, status_code = result
+        response.headers['Access-Control-Allow-Origin'] = '*'
+        return response, status_code
+    result.headers['Access-Control-Allow-Origin'] = '*'
+    return result

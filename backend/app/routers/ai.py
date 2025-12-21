@@ -23,10 +23,16 @@ def generate_feedback():
         return jsonify({"error": "请求数据不能为空"}), 400
 
     text_content = data.get('text_content', '')
-    if not text_content or not text_content.strip():
-        return jsonify({"error": "文本内容不能为空"}), 400
+    image_urls = data.get('image_urls', [])
+    
+    # 检查是否有内容：文本、图片或PDF任一不为空即可
+    has_text = text_content and text_content.strip()
+    has_images = image_urls and len(image_urls) > 0
+    
+    if not has_text and not has_images:
+        return jsonify({"error": "提交内容不能为空，请至少包含文本、图片或PDF中的一种"}), 400
 
     from app.handlers.ai_handler import handle_generate_feedback
-    return handle_generate_feedback(text_content)
+    return handle_generate_feedback(text_content, image_urls)
 
 

@@ -55,3 +55,19 @@ export const uploadHomeworkImage = (homeworkId, formData) =>
       'Content-Type': 'multipart/form-data',
     },
   });
+
+/**
+ * 获取课程的教师列表
+ * @param {Number} courseId - 课程ID
+ * @returns {Promise} API响应
+ */
+export const fetchCourseTeachers = (courseId) =>
+  request.get(`/students/me/courses/${courseId}/teachers`);
+
+/**
+ * 获取课程的助教列表
+ * @param {Number} courseId - 课程ID
+ * @returns {Promise} API响应
+ */
+export const fetchCourseTAs = (courseId) =>
+  request.get(`/students/me/courses/${courseId}/tas`);
